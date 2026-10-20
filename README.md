@@ -25,7 +25,8 @@ node serve.js
 
 - **關卡**：每關走到撤離點完成，越後面越長越難；每 3 關有 Boss（裝甲指揮官）
 - **敵人**：步兵、機槍兵（任務 2）、衝鋒兵（任務 3）、盾兵（任務 4）、高塔狙擊手、直升機空襲
-- **地形**：沙包、木箱可擋子彈；補血包
+- **地形**：坡道與高台（子彈會依高低差斜著飛，山坡可擋子彈）；沙包、木箱可擋子彈；補血包
+- **背景**：漸層夜空、月亮、流星，三層視差捲動的山與樹林
 - **成長**：金幣（距離＋擊殺＋任務獎勵，陣亡減半）、軍火庫 5 種武器與 4 種升級、16 階軍階
 - **存檔**：瀏覽器 localStorage
 - **音效**：Web Audio 即時合成，主選單可開關
@@ -35,6 +36,6 @@ node serve.js
 - `src/config.js`：所有平衡數值（武器、敵人、關卡、軍階）
 - `src/scenes/`：Boot（產生色塊貼圖）、Menu、Game、Result、Shop
 - `src/objects/`：Player、Shield、Enemy、Sniper、Cover
-- `src/systems/`：Spawner、AirRaid、TouchControls、HUD、Sound
+- `src/systems/`：Terrain、Background、Spawner、AirRaid、TouchControls、HUD、Sound
 
 使用 [Phaser 3](https://phaser.io/)（目前從 CDN 載入）。
