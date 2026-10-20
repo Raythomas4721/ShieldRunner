@@ -49,6 +49,19 @@ export default class BootScene extends Phaser.Scene {
     g.lineStyle(2, 0xdee2e6).strokeRoundedRect(1, 1, 10, 54, 3);
     make('eshield', 12, 56);
 
+    // 擲彈兵：暗紫色、綠色頭盔，舉著手榴彈
+    g.fillStyle(0x6a4c93).fillRect(12, 18, 24, 40);
+    g.fillStyle(COLORS.skin).fillCircle(24, 11, 9);
+    g.fillStyle(0x52b788).fillRect(14, 0, 20, 7);
+    g.fillStyle(0x6a4c93).fillRect(4, 16, 8, 6);
+    g.fillStyle(0x2d6a4f).fillCircle(5, 13, 5);
+    g.fillStyle(0x2d6a4f).fillRect(14, 40, 20, 5);
+    make('grenadier', 44, 58);
+    g.fillStyle(0x2d6a4f).fillCircle(6, 6, 6);
+    g.fillStyle(0x95d5b2).fillCircle(4, 4, 2);
+    g.fillStyle(0xadb5bd).fillRect(5, 0, 3, 2);
+    make('grenade', 12, 12);
+
     // Boss：裝甲指揮官，體型較大、紅色護目鏡
     g.fillStyle(0x3c096c).fillRect(14, 26, 44, 60);
     g.fillStyle(0x6c757d).fillRect(10, 30, 8, 24).fillRect(54, 30, 8, 24);

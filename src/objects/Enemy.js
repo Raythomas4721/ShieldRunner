@@ -92,6 +92,10 @@ export default class Enemy {
   }
 
   fire() {
+    if (this.def.ai === 'grenadier') {
+      this.scene.throwGrenade(this);
+      return;
+    }
     const x = this.x - this.sprite.displayWidth / 2 - 4;
     const gunY = this.sprite.y - 25;
     if (this.heavyNext) this.scene.fireEnemyBullet(x, gunY, this.def, this.def.heavy);

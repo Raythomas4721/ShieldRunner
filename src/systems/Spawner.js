@@ -21,7 +21,7 @@ export default class Spawner {
       const x = this.nextX;
       const type = this.pickType();
       // 站著開槍的敵人前方可能有沙包；第一個敵人不放，讓玩家先熟悉操作
-      const canCover = type === 'infantry' || type === 'gunner';
+      const canCover = type === 'infantry' || type === 'gunner' || type === 'grenadier';
       if (this.count > 0 && canCover && Math.random() < SPAWN.enemyCoverChance) {
         this.scene.spawnCover(x - 55, 'sandbag');
       }

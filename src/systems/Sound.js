@@ -104,6 +104,7 @@ const SOUNDS = {
   // 敵人
   enemyShot: (t) => noise(t, { dur: 0.05, vol: 0.09, filter: 1800 }),
   heavyShot: (t) => { noise(t, { dur: 0.3, vol: 0.3, filter: 900 }); tone(t, { freq: 140, to: 50, dur: 0.3, type: 'sine', vol: 0.25 }); },
+  throw: (t) => { noise(t, { dur: 0.15, vol: 0.08, filter: 900 }); tone(t, { freq: 300, to: 520, dur: 0.15, type: 'sine', vol: 0.05 }); },
   charge: (t) => tone(t, { freq: 300, to: 600, dur: 0.25, type: 'sawtooth', vol: 0.06 }),
   lock: (t) => [0, 0.18, 0.36].forEach((at) => tone(t, { freq: 1700, dur: 0.06, type: 'sine', vol: 0.08, at })),
   sniperShot: (t) => { noise(t, { dur: 0.2, vol: 0.4, filter: 5000 }); tone(t, { freq: 2200, to: 100, dur: 0.22, vol: 0.06 }); },

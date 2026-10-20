@@ -199,6 +199,18 @@ export const ENEMIES = {
     bulletSpeed: 320, bulletDamage: 12,
     tip: '盾兵：正面有盾，趁他放下盾開槍時反擊（狙擊槍、火箭筒可直接破盾）',
   },
+  grenadier: {
+    name: '擲彈兵', texture: 'grenadier', ai: 'grenadier',
+    hp: 90, coins: 9,
+    fireRange: 620, firstShotDelay: [700, 1200], fireInterval: [2600, 3400], aimMs: 500,
+    burst: 1,
+    flightMs: 1100,    // 手榴彈飛行時間（落點會稍微預判玩家移動）
+    gravity: 900,
+    blastRadius: 55,
+    damage: 22,        // 落地爆炸傷害，正面盾擋不住
+    shieldCost: 15,    // 用對空盾在空中擋下的耗盾
+    tip: '擲彈兵：手榴彈從上方丟過來，正面盾擋不住！看到紅圈快移動，或舉「對空」盾',
+  },
   boss: {
     name: '裝甲指揮官', texture: 'boss', ai: 'shooter', boss: true,
     hp: 600, coins: 100,  // 任務 6、9… 的 Boss 血量會再增加（見 bossHpMul）
@@ -217,6 +229,7 @@ export const enemyPool = (n) => [
   ...(n >= 2 ? [['gunner', 2 + n]] : []),
   ...(n >= 3 ? [['charger', 1 + n]] : []),
   ...(n >= 4 ? [['shielder', n]] : []),
+  ...(n >= 5 ? [['grenadier', n - 2]] : []),
 ];
 
 // 狙擊手：站在高塔上，紅線鎖定後移動就能閃開
@@ -286,7 +299,7 @@ export const missionConfig = (n) => ({
   raids: Math.min(1 + Math.floor((n - 1) / 2), 3),
   boss: n % 3 === 0,                                            // 每 3 關撤離點前有 Boss
   bossHpMul: 1 + 0.25 * (Math.floor(n / 3) - 1),                // 第 2 次出現起每次血量 +25%
-  newEnemy: { 2: 'gunner', 3: 'charger', 4: 'shielder' }[n] || null, // 這關新登場的敵人
+  newEnemy: { 2: 'gunner', 3: 'charger', 4: 'shielder', 5: 'grenadier' }[n] || null, // 這關新登場的敵人
 });
 
 // 空襲發生的進度點，平均分布在 35%～85% 之間

@@ -50,6 +50,7 @@ export default class GameScene extends Phaser.Scene {
     this.playerBullets = this.physics.add.group();
     this.enemyBullets = this.physics.add.group();
     this.airBullets = this.physics.add.group();
+    this.grenades = this.physics.add.group();
     this.coverGroup = this.physics.add.group();
     this.counters = { blocks: 0, parries: 0 }; // 教學提示用
     this.kills = 0;
@@ -68,6 +69,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.physics.add.overlap(shield.front, this.enemyBullets, (_s, b) => this.onShieldBlock(b));
     this.physics.add.overlap(shield.air, this.airBullets, (_s, b) => this.onShieldBlock(b));
+    this.physics.add.overlap(shield.air, this.grenades, (_s, gr) => this.onGrenadeBlocked(gr));
     this.physics.add.overlap(this.player.sprite, this.enemyBullets, (_p, b) => this.onPlayerHit(b));
     this.physics.add.overlap(this.player.sprite, this.airBullets, (_p, b) => this.onPlayerHit(b));
     this.physics.add.overlap(this.playerBullets, this.enemyGroup, (b, e) => this.onEnemyHit(b, e));
@@ -273,6 +275,66 @@ export default class GameScene extends Phaser.Scene {
     }
     b.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.muzzleFlash(x, y, 0xff7b00);
+  }
+
+  // 擲彈兵丟手榴彈：拋物線飛向玩家（稍微預判移動），落點先畫紅圈
+  throwGrenade(enemy) {
+    const d = enemy.def;
+    const T = d.flightMs / 1000;
+    const p = this.player;
+    const tx = p.x + p.sprite.body.velocity.x * T * 0.6;
+    const ty = this.groundAt(tx);
+    const sx = enemy.x - 20;
+    const sy = enemy.sprite.y - 50;
+    const gr = this.grenades.create(sx, sy, 'grenade');
+    gr.body.setGravityY(d.gravity);
+    gr.setVelocity((tx - sx) / T, (ty - sy - 0.5 * d.gravity * T * T) / T);
+    gr.setAngularVelocity(-420);
+    const mark = this.add.ellipse(tx, ty - 2, d.blastRadius * 2, 14, 0xff2d2d, 0.2)
+      .setStrokeStyle(2, 0xff2d2d, 0.9).setDepth(3);
+    this.tweens.add({ targets: mark, alpha: 0.5, duration: 180, yoyo: true, repeat: -1 });
+    gr.setData({ def: d, mark });
+    this.sfx('throw');
+  }
+
+  // 手榴彈落地爆炸：範圍內的玩家受傷；舉著對空盾就擋得住，正面盾擋不住
+  explodeGrenade(gr) {
+    const { x } = gr;
+    const d = gr.getData('def');
+    const y = this.groundAt(x);
+    this.removeGrenade(gr);
+    const blast = this.add.circle(x, y - 10, d.blastRadius, 0xff7b00, 0.55).setDepth(20).setScale(0.3);
+    this.tweens.add({ targets: blast, scale: 1, alpha: 0, duration: 280, onComplete: () => blast.destroy() });
+    this.cameras.main.shake(120, 0.008);
+    this.sfx('explosion');
+    if (this.over || Math.abs(this.player.x - x) > d.blastRadius + 10) return;
+    const shield = this.player.shield;
+    if (shield.mode !== 'air') {
+      this.damagePlayer(d.damage);
+    } else if (shield.canParry(this.time.now)) {
+      this.parryEffect(this.player.x, this.player.y - 66);
+    } else {
+      this.blockWithShield(d.shieldCost, this.player.x, this.player.y - 66);
+    }
+  }
+
+  // 對空盾在空中擋下手榴彈（剛舉起時一樣算完美格擋）
+  onGrenadeBlocked(gr) {
+    if (!gr.active || this.over) return;
+    const { x, y } = gr;
+    const d = gr.getData('def');
+    this.removeGrenade(gr);
+    const puff = this.add.circle(x, y, 22, 0xff7b00, 0.6).setDepth(20);
+    this.tweens.add({ targets: puff, scale: 1.8, alpha: 0, duration: 200, onComplete: () => puff.destroy() });
+    if (this.player.shield.canParry(this.time.now)) this.parryEffect(x, y);
+    else this.blockWithShield(d.shieldCost, x, y);
+  }
+
+  removeGrenade(gr) {
+    const mark = gr.getData('mark');
+    this.tweens.killTweensOf(mark);
+    mark.destroy();
+    gr.destroy();
   }
 
   // 衝鋒兵貼身攻擊：盾牌擋不住
@@ -550,6 +612,9 @@ export default class GameScene extends Phaser.Scene {
       } else if (b.x < left || b.x > right || b.y < 0) {
         b.destroy();
       }
+    }
+    for (const gr of this.grenades.getChildren().slice()) {
+      if (gr.body.velocity.y > 0 && gr.y >= this.groundAt(gr.x) - 4) this.explodeGrenade(gr);
     }
     for (const b of this.airBullets.getChildren().slice()) {
       const groundY = this.groundAt(b.x);
