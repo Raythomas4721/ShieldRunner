@@ -1,12 +1,12 @@
-import { GROUND_Y, COVERS } from '../config.js';
+import { COVERS } from '../config.js';
 
 // 掩體：擋下雙方子彈，受損會變暗，耐久歸零就碎掉
 export default class Cover {
   constructor(scene, group, x, type) {
     this.scene = scene;
     this.def = COVERS[type];
-    // 畫在角色前面，躲在後面時看起來像真的藏身其後
-    this.sprite = group.create(x, GROUND_Y, this.def.texture).setOrigin(0.5, 1).setDepth(7);
+    // 畫在角色前面，躲在後面時看起來像真的藏身其後；稍微埋進地面，坡上也不會懸空
+    this.sprite = group.create(x, scene.terrain.heightAt(x) + 3, this.def.texture).setOrigin(0.5, 1).setDepth(7);
     this.sprite.setData('ref', this);
     this.hp = this.def.hp;
   }

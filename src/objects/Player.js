@@ -1,11 +1,11 @@
-import { GROUND_Y, PLAYER } from '../config.js';
+import { PLAYER, TERRAIN } from '../config.js';
 import Shield from './Shield.js';
 
 export default class Player {
   // stats：套用升級後的數值（見 config.playerStats）
   constructor(scene, x, stats, weapon) {
     this.scene = scene;
-    this.sprite = scene.physics.add.image(x, GROUND_Y, 'player').setOrigin(0.5, 1).setDepth(5);
+    this.sprite = scene.physics.add.image(x, scene.terrain.heightAt(x), 'player').setOrigin(0.5, 1).setDepth(5);
     this.shield = new Shield(scene, stats.shieldMax);
     this.maxHp = stats.maxHp;
     this.speed = stats.speed;
@@ -23,6 +23,16 @@ export default class Player {
     return this.sprite.x;
   }
 
+  // 腳底的 y（跟著地形起伏）
+  get y() {
+    return this.sprite.y;
+  }
+
+  // 胸口高度：開槍與被瞄準的位置
+  get chestY() {
+    return this.sprite.y - 25;
+  }
+
   isStunned(time) {
     return time < this.stunnedUntil;
   }
@@ -35,6 +45,8 @@ export default class Player {
 
   // blockX：前方最近敵人擋住的位置，玩家不能穿過活著的敵人
   update(time, delta, input, blockX) {
+    const terrain = this.scene.terrain;
+    this.sprite.y = terrain.heightAt(this.x);
     if (this.dead) {
       this.sprite.setVelocityX(0);
       return;
@@ -43,11 +55,15 @@ export default class Player {
     let shieldMode = null;
     if (!stunned && input.air) shieldMode = 'air';
     else if (!stunned && input.shield) shieldMode = 'front';
-    this.shield.update(delta, shieldMode, this.x);
+    this.shield.update(delta, shieldMode, this.x, this.y);
     const shielding = this.shield.raised;
 
     let vx = 0;
     if (input.move && !stunned) vx = this.speed * (shielding ? PLAYER.shieldSpeedMul : 1);
+    // 上坡走比較慢、下坡比較快
+    const slope = terrain.slopeAt(this.x);
+    if (slope < -0.05) vx *= TERRAIN.uphillSpeedMul;
+    else if (slope > 0.05) vx *= TERRAIN.downhillSpeedMul;
     if (blockX !== null && this.x >= blockX) vx = 0;
     this.sprite.setVelocityX(vx);
 
@@ -69,7 +85,7 @@ export default class Player {
     if (wantFire && !this.reloadUntil && time - this.lastShot >= w.fireRate) {
       this.lastShot = time;
       this.ammo--;
-      this.scene.firePlayerBullet(this.x + 26, GROUND_Y - 25, w);
+      this.scene.firePlayerBullet(this.x + 26, this.chestY, w);
       if (this.ammo === 0) this.startReload(time);
     } else if (!wantFire && !this.reloadUntil && this.ammo < w.magSize && time - this.lastShot > PLAYER.autoReloadIdleMs) {
       this.startReload(time);

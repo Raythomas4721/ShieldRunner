@@ -2,18 +2,31 @@
 
 export const GAME_W = 960;
 export const GAME_H = 540;
-export const GROUND_Y = 350;        // 地面高度（角色腳底的 y），下方留給觸控按鈕
+export const GROUND_Y = 350;        // 地面基準高度（最低處），下方留給觸控按鈕；實際高度見 Terrain.heightAt
 export const PX_PER_METER = 20;     // 20px = 1 公尺
 export const PLAYER_SCREEN_X = 250; // 玩家固定在畫面上的 x 位置
 export const FONT = '"Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif';
 
+// 地形：平地與坡道交錯，只會往上隆起（不低於 GROUND_Y，避免擋到按鈕）
+export const TERRAIN = {
+  flatStart: 500,      // 起點後這段距離保持平坦
+  evacFlat: 350,       // 撤離點前這段距離保持平坦
+  maxHeight: 80,       // 最高可以比基準高多少 px
+  flatLen: [180, 420], // 平地長度
+  slopeLen: [140, 300],
+  minRise: 30,         // 一段坡至少上升或下降多少
+  maxSlope: 0.45,      // 坡度上限（高度差 / 水平距離）
+  uphillSpeedMul: 0.85,
+  downhillSpeedMul: 1.1,
+};
+
 // 暗色系配色：主角藍、敵人紫
 export const COLORS = {
-  sky: '#0b132b',
-  hills: 0x1c2541,
+  skyTop: 0x050816,
+  skyBottom: 0x1b2a4a,
   ground: 0x0d0d12,
   groundTop: 0x3a506b,
-  groundSpot: 0x1a1a24,
+  groundLayer: 0x1a1f2e,
   player: 0x3a86ff,
   enemy: 0x9d4edd,
   sniper: 0x7b2cbf,

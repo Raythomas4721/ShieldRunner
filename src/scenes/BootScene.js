@@ -129,26 +129,58 @@ export default class BootScene extends Phaser.Scene {
     g.fillStyle(0x2dc653).fillTriangle(8, 4, 40, 16, 8, 28);
     make('evac', 40, 120);
 
-    // 夜空星星
-    for (let i = 0; i < 40; i++) {
-      g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.2, 0.8));
-      g.fillRect(Phaser.Math.Between(0, 254), Phaser.Math.Between(0, 198), 2, 2);
+    // 夜空星星：大小、亮度不一
+    for (let i = 0; i < 70; i++) {
+      g.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.15, 0.7));
+      const size = Math.random() < 0.8 ? 1 : 2;
+      g.fillRect(Phaser.Math.Between(0, 254), Phaser.Math.Between(0, 198), size, size);
     }
     make('stars', 256, 200);
 
-    // 遠景山丘（可左右無縫重複）
-    g.fillStyle(COLORS.hills);
-    g.fillTriangle(0, 140, 70, 40, 150, 140);
-    g.fillTriangle(110, 140, 200, 70, 256, 140);
-    make('hills', 256, 140);
-
-    // 地面
-    g.fillStyle(COLORS.ground).fillRect(0, 0, 64, 200);
-    g.fillStyle(COLORS.groundTop).fillRect(0, 0, 64, 6);
-    g.fillStyle(COLORS.groundSpot).fillRect(10, 30, 8, 6).fillRect(40, 70, 10, 6).fillRect(20, 130, 8, 6).fillRect(48, 170, 8, 6);
-    make('ground', 64, 200);
-
+    this.makeMountains(g, make);
     g.destroy();
     this.scene.start('Menu');
+  }
+
+  // 背景山：用整數倍頻率的正弦波疊加，左右邊緣高度一致，可以無縫重複
+  makeMountains(g, make) {
+    const W = 512;
+    const ridge = (base, waves) => (x) =>
+      base - waves.reduce((sum, [amp, freq, phase]) => sum + amp * Math.sin((2 * Math.PI * freq * x) / W + phase), 0);
+    const outline = (fn, step = 4) => {
+      const pts = [];
+      for (let x = 0; x <= W; x += step) pts.push({ x, y: fn(x) });
+      return pts;
+    };
+
+    // 遠山：高聳尖峰，山頂積雪
+    const H1 = 220;
+    const far = ridge(120, [[45, 1, 0.3], [25, 3, 1.1], [14, 7, 2.0], [6, 13, 0.5]]);
+    const farTop = outline(far);
+    g.fillStyle(0x1b2a4a).fillPoints([...farTop, { x: W, y: H1 }, { x: 0, y: H1 }], true);
+    const snowLine = 78;
+    const snow = farTop.map((p) => ({ x: p.x, y: Math.min(p.y, snowLine) }));
+    g.fillStyle(0x52688f).fillPoints([...snow, ...snow.map((p) => ({ x: p.x, y: snowLine })).reverse()], true);
+    make('mountainsFar', W, H1);
+
+    // 中景丘陵：圓緩起伏
+    const H2 = 160;
+    const mid = ridge(78, [[24, 2, 0.7], [12, 5, 2.3], [6, 9, 1.0]]);
+    g.fillStyle(0x14213d).fillPoints([...outline(mid), { x: W, y: H2 }, { x: 0, y: H2 }], true);
+    make('hills', W, H2);
+
+    // 近景樹林：松樹剪影，超出邊緣的樹在另一側補畫，接縫不會斷掉
+    const H3 = 100;
+    g.fillStyle(0x0b1120).fillRect(0, 72, W, H3 - 72);
+    for (let i = 0; i < 30; i++) {
+      const x = Phaser.Math.Between(0, W);
+      const h = Phaser.Math.Between(26, 48);
+      const w = Phaser.Math.Between(14, 22);
+      for (const ox of [x - W, x, x + W]) {
+        g.fillTriangle(ox - w / 2, 76, ox, 76 - h, ox + w / 2, 76);
+        g.fillTriangle(ox - w / 2.6, 76 - h * 0.35, ox, 76 - h * 1.05, ox + w / 2.6, 76 - h * 0.35);
+      }
+    }
+    make('treeline', W, H3);
   }
 }

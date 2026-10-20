@@ -19,14 +19,15 @@ export default class Shield {
     return this.mode !== null;
   }
 
-  update(delta, wantMode, playerX) {
+  // playerY：玩家腳底高度，盾牌跟著地形上下移動
+  update(delta, wantMode, playerX, playerY = GROUND_Y) {
     if (this.broken && this.durability >= SHIELD.recoverAt) this.broken = false;
     this.mode = this.broken ? null : wantMode;
     if (!this.mode) {
       this.durability = Math.min(this.max, this.durability + SHIELD.regenPerSec * delta / 1000);
     }
-    this.front.x = playerX + 26;
-    this.air.x = playerX + 2;
+    this.front.setPosition(playerX + 26, playerY - 2);
+    this.air.setPosition(playerX + 2, playerY - 60);
     this.show();
   }
 

@@ -1,14 +1,13 @@
-import { GROUND_Y, ENEMIES, COLORS, FONT } from '../config.js';
+import { ENEMIES, COLORS, FONT } from '../config.js';
 
-const GUN_Y = GROUND_Y - 25; // 與玩家胸口同高
-
-// 地面敵人：行為由 ENEMIES[type].ai 決定
+// 地面敵人：行為由 ENEMIES[type].ai 決定，腳底跟著地形高度
 export default class Enemy {
   constructor(scene, group, x, type) {
     this.scene = scene;
     this.type = type;
     this.def = ENEMIES[type];
-    this.sprite = group.create(x, GROUND_Y, this.def.texture).setOrigin(0.5, 1).setDepth(4);
+    const groundY = scene.terrain.heightAt(x);
+    this.sprite = group.create(x, groundY, this.def.texture).setOrigin(0.5, 1).setDepth(4);
     this.sprite.setData('ref', this);
     this.hp = this.def.hp;
     this.alive = true;
@@ -21,12 +20,17 @@ export default class Enemy {
     this.nextMelee = 0;
     this.seen = false;   // 是否已進入玩家視線（用來顯示新敵人提示）
     if (this.def.guard) {
-      this.shield = scene.add.image(x - 26, GROUND_Y - 2, 'eshield').setOrigin(0.5, 1).setDepth(5);
+      this.shield = scene.add.image(x - 26, groundY - 2, 'eshield').setOrigin(0.5, 1).setDepth(5);
     }
   }
 
   get x() {
     return this.sprite.x;
+  }
+
+  // 身體中段：玩家自動瞄準的位置
+  get chestY() {
+    return this.sprite.y - this.sprite.displayHeight * 0.5;
   }
 
   // 盾兵正面持盾中：瞄準、連發和開火後的短暫時間會放下盾
@@ -36,6 +40,7 @@ export default class Enemy {
 
   update(time, playerX, difficulty) {
     if (!this.alive) return;
+    this.sprite.y = this.scene.terrain.heightAt(this.x);
     if (!this.seen && this.x - playerX < 700) {
       this.seen = true;
       this.scene.onEnemySeen(this);
@@ -43,7 +48,7 @@ export default class Enemy {
     if (this.def.ai === 'charger') this.updateCharger(time, playerX);
     else this.updateShooter(time, playerX, difficulty);
     if (this.shield) {
-      this.shield.x = this.x - 26;
+      this.shield.setPosition(this.x - 26, this.sprite.y - 2);
       this.shield.setVisible(this.guarding);
     }
   }
@@ -88,8 +93,9 @@ export default class Enemy {
 
   fire() {
     const x = this.x - this.sprite.displayWidth / 2 - 4;
-    if (this.heavyNext) this.scene.fireEnemyBullet(x, GUN_Y, this.def, this.def.heavy);
-    else this.scene.fireEnemyBullet(x, GUN_Y, this.def);
+    const gunY = this.sprite.y - 25;
+    if (this.heavyNext) this.scene.fireEnemyBullet(x, gunY, this.def, this.def.heavy);
+    else this.scene.fireEnemyBullet(x, gunY, this.def);
   }
 
   // 衝鋒兵：玩家靠近就衝過來，貼身後持續近戰攻擊
@@ -98,13 +104,13 @@ export default class Enemy {
     const dist = this.x - playerX;
     if (!this.charging && dist < d.triggerRange) {
       this.charging = true;
-      this.alert = this.scene.add.text(this.x, GROUND_Y - 78, '！', {
+      this.alert = this.scene.add.text(this.x, this.sprite.y - 78, '！', {
         fontFamily: FONT, fontSize: '28px', color: '#ff4d6d', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
       }).setOrigin(0.5).setDepth(8);
       this.scene.sfx('charge');
     }
     if (!this.charging) return;
-    if (this.alert) this.alert.x = this.x;
+    if (this.alert) this.alert.setPosition(this.x, this.sprite.y - 78);
 
     if (dist > 34) {
       this.sprite.setVelocityX(-d.speed);

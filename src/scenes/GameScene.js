@@ -1,8 +1,10 @@
 import {
-  GAME_W, GAME_H, GROUND_Y, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
+  GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
   COVER_SHOOT_OVER, SNIPER, AIR_RAID, HEALTH_PACK, WEAPONS, COINS,
   missionConfig, raidPoints, difficultyAt, playerStats,
 } from '../config.js';
+import Terrain from '../systems/Terrain.js';
+import Background from '../systems/Background.js';
 import { loadSave, writeSave } from '../save.js';
 import Player from '../objects/Player.js';
 import Enemy from '../objects/Enemy.js';
@@ -28,14 +30,11 @@ export default class GameScene extends Phaser.Scene {
     // 重新進入時 Arcade 世界會沿用上一局的暫停狀態
     this.physics.resume();
     this.mission = missionConfig(this.missionNo);
-    this.cameras.main.setBackgroundColor(COLORS.sky);
-
-    this.stars = this.add.tileSprite(0, 0, GAME_W, GROUND_Y - 60, 'stars').setOrigin(0).setScrollFactor(0);
-    this.hills = this.add.tileSprite(0, GROUND_Y - 140, GAME_W, 140, 'hills').setOrigin(0).setScrollFactor(0);
-    this.ground = this.add.tileSprite(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y, 'ground').setOrigin(0).setScrollFactor(0);
 
     this.startX = PLAYER_SCREEN_X;
     this.evacX = this.startX + this.mission.length * PX_PER_METER;
+    this.background = new Background(this);
+    this.terrain = new Terrain(this, this.startX, this.evacX);
     this.createEvac();
 
     this.stats = playerStats(this.save.upgrades);
@@ -114,19 +113,23 @@ export default class GameScene extends Phaser.Scene {
   syncCamera() {
     const cam = this.cameras.main;
     cam.scrollX = this.player.x - PLAYER_SCREEN_X;
-    this.stars.tilePositionX = cam.scrollX * 0.05;
-    this.hills.tilePositionX = cam.scrollX * 0.3;
-    this.ground.tilePositionX = cam.scrollX;
+    this.background.update(cam.scrollX, this.time.now);
+    this.terrain.draw(cam.scrollX - 20, cam.scrollX + GAME_W + 20);
+  }
+
+  groundAt(x) {
+    return this.terrain.heightAt(x);
   }
 
   // ---------- 生成 ----------
 
   createEvac() {
-    this.add.image(this.evacX, GROUND_Y, 'evac').setOrigin(0.15, 1).setDepth(2);
-    this.add.text(this.evacX + 10, GROUND_Y - 140, '撤離點', {
+    const y = this.groundAt(this.evacX);
+    this.add.image(this.evacX, y, 'evac').setOrigin(0.15, 1).setDepth(2);
+    this.add.text(this.evacX + 10, y - 140, '撤離點', {
       fontFamily: FONT, fontSize: '22px', color: '#2dc653', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(2);
-    const beacon = this.add.circle(this.evacX, GROUND_Y - 4, 30, 0x2dc653, 0.35).setDepth(1);
+    const beacon = this.add.circle(this.evacX, y - 4, 30, 0x2dc653, 0.35).setDepth(1);
     this.tweens.add({ targets: beacon, scale: 1.8, alpha: 0, duration: 1200, repeat: -1 });
   }
 
@@ -178,19 +181,34 @@ export default class GameScene extends Phaser.Scene {
   }
 
   spawnHealthPack(x) {
-    const kit = this.add.image(x, GROUND_Y - 4, 'medkit').setOrigin(0.5, 1).setDepth(3);
-    this.tweens.add({ targets: kit, y: GROUND_Y - 12, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const y = this.groundAt(x);
+    const kit = this.add.image(x, y - 4, 'medkit').setOrigin(0.5, 1).setDepth(3);
+    this.tweens.add({ targets: kit, y: y - 12, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.pickups.push(kit);
   }
 
   // ---------- 子彈 ----------
 
+  // 自動瞄準前方射程內最近的敵人（有高低差時子彈會斜著飛），沒有目標就水平射擊
+  aimAngle(x, y, weapon) {
+    let target = null;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dx = e.x - x;
+      if (dx <= 0 || dx > weapon.range + 40) continue;
+      if (!target || e.x < target.x) target = e;
+    }
+    if (!target) return 0;
+    return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -0.6, 0.6);
+  }
+
   // 霰彈槍一次射出多發，呈上下扇形散開
   firePlayerBullet(x, y, weapon) {
     this.sfx(weapon.sound);
+    const base = this.aimAngle(x, y, weapon);
     const count = weapon.pellets || 1;
     for (let i = 0; i < count; i++) {
-      const angle = count > 1 ? Phaser.Math.DegToRad(weapon.spread * (i / (count - 1) - 0.5)) : 0;
+      const angle = base + (count > 1 ? Phaser.Math.DegToRad(weapon.spread * (i / (count - 1) - 0.5)) : 0);
       const b = this.playerBullets.create(x, y, weapon.texture || 'pbullet').setRotation(angle);
       b.setData({
         damage: weapon.damage,
@@ -204,24 +222,26 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // 敵人子彈瞄準玩家胸口，站在高處就會往下打
   // heavy：Boss 的重砲，傷害高、耗盾多、飛得慢
   fireEnemyBullet(x, y, def, heavy = null) {
     const b = this.enemyBullets.create(x, y, heavy ? 'heavy' : 'ebullet');
+    const angle = Math.atan2(this.player.chestY - y, this.player.x - x);
+    const speed = heavy ? heavy.speed : def.bulletSpeed;
     if (heavy) {
       b.setData({ damage: heavy.damage, shieldCost: heavy.shieldCost, originX: x });
-      b.setVelocityX(-heavy.speed);
       this.sfx('heavyShot');
     } else {
       b.setData({ damage: def.bulletDamage, shieldCost: def.shieldCost, originX: x });
-      b.setVelocityX(-def.bulletSpeed);
       this.sfx('enemyShot');
     }
+    b.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
   }
 
   // 衝鋒兵貼身攻擊：盾牌擋不住
   meleeHit(enemy) {
     if (this.over) return;
-    this.spark(this.player.x + 14, GROUND_Y - 30, 0xff4d6d);
+    this.spark(this.player.x + 14, this.player.y - 30, 0xff4d6d);
     this.sfx('melee');
     this.damagePlayer(enemy.def.meleeDamage);
   }
@@ -232,28 +252,29 @@ export default class GameScene extends Phaser.Scene {
     const b = this.airBullets.create(x, y, 'abullet');
     b.setData({ damage: AIR_RAID.damage, shieldCost: AIR_RAID.shieldCost, originX: -Infinity });
     b.setVelocityY(AIR_RAID.bulletSpeed);
-    const fallMs = ((GROUND_Y - y) / AIR_RAID.bulletSpeed) * 1000;
-    const mark = this.add.ellipse(x, GROUND_Y - 2, 18, 6, 0xff2d2d, 0.7).setDepth(3);
+    const groundY = this.groundAt(x);
+    const fallMs = ((groundY - y) / AIR_RAID.bulletSpeed) * 1000;
+    const mark = this.add.ellipse(x, groundY - 2, 18, 6, 0xff2d2d, 0.7).setDepth(3);
     this.tweens.add({ targets: mark, alpha: 0, duration: fallMs, onComplete: () => mark.destroy() });
   }
 
-  sniperShot(sniper, lockX) {
+  sniperShot(sniper, lockX, lockY) {
     const tracer = this.add.graphics().setDepth(9);
-    tracer.lineStyle(3, 0xffffff, 1).lineBetween(sniper.gunX, sniper.gunY, lockX, GROUND_Y - 30);
+    tracer.lineStyle(3, 0xffffff, 1).lineBetween(sniper.gunX, sniper.gunY, lockX, lockY);
     this.tweens.add({ targets: tracer, alpha: 0, duration: 200, onComplete: () => tracer.destroy() });
     this.sfx('sniperShot');
 
     const p = this.player;
     if (Math.abs(p.x - lockX) > SNIPER.hitRadius) {
-      this.spark(lockX, GROUND_Y - 4, COLORS.laser);
-      this.floatText(p.x, GROUND_Y - 90, '閃過！', '#8ecae6');
+      this.spark(lockX, this.groundAt(lockX) - 4, COLORS.laser);
+      this.floatText(p.x, p.y - 90, '閃過！', '#8ecae6');
       return;
     }
     if (p.shield.mode === 'front') {
-      this.blockWithShield(SNIPER.shieldCost, p.x + 26, GROUND_Y - 30);
+      this.blockWithShield(SNIPER.shieldCost, p.x + 26, p.y - 30);
       return;
     }
-    this.spark(p.x, GROUND_Y - 30, COLORS.laser);
+    this.spark(p.x, p.y - 30, COLORS.laser);
     this.damagePlayer(SNIPER.damage);
   }
 
@@ -296,7 +317,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.player.shield.absorb(cost)) {
       this.player.stun(this.time.now);
       this.cameras.main.shake(200, 0.01);
-      this.floatText(this.player.x, GROUND_Y - 90, '破盾！', '#ffd60a');
+      this.floatText(this.player.x, this.player.y - 90, '破盾！', '#ffd60a');
       this.sfx('shieldBreak');
     } else {
       this.sfx('block');
@@ -357,7 +378,7 @@ export default class GameScene extends Phaser.Scene {
       this.sfx('explosion');
       this.cameras.main.shake(500, 0.015);
       for (let i = 0; i < 4; i++) {
-        this.time.delayedCall(i * 150, () => this.spark(enemy.x + Phaser.Math.Between(-30, 30), GROUND_Y - Phaser.Math.Between(10, 80), 0xff7b00));
+        this.time.delayedCall(i * 150, () => this.spark(enemy.x + Phaser.Math.Between(-30, 30), enemy.sprite.y - Phaser.Math.Between(10, 80), 0xff7b00));
       }
       this.banner(`擊倒${enemy.def.name}！+${enemy.def.coins} 金幣`, '#ffd60a', 2500, 200);
     }
@@ -389,7 +410,7 @@ export default class GameScene extends Phaser.Scene {
     this.pickups = this.pickups.filter((kit) => {
       if (Math.abs(kit.x - p.x) > 26) return true;
       p.heal(HEALTH_PACK.amount);
-      this.floatText(p.x, GROUND_Y - 90, `+${HEALTH_PACK.amount}`, '#2dc653');
+      this.floatText(p.x, p.y - 90, `+${HEALTH_PACK.amount}`, '#2dc653');
       this.sfx('pickup');
       this.tweens.killTweensOf(kit);
       kit.destroy();
@@ -397,25 +418,35 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  // 玩家子彈超過武器射程就消失；其他東西離開畫面左側就清掉
+  // 子彈打到山坡就停下（地形可以當掩護）；玩家子彈超過射程就消失；其他東西離開畫面左側就清掉
   cleanup() {
     const left = this.cameras.main.scrollX - 40;
     const right = left + GAME_W + 80;
     for (const b of this.playerBullets.getChildren().slice()) {
-      if (b.x > b.getData('maxX')) {
-        // 火箭飛到射程盡頭也會爆炸
+      const hitGround = b.y >= this.groundAt(b.x);
+      if (b.x > b.getData('maxX') || hitGround) {
+        // 火箭飛到射程盡頭或撞到地面也會爆炸
         if (b.getData('explosive')) this.explode(b);
-        else b.destroy();
-      } else if (b.y > GROUND_Y || b.y < 0) {
+        else {
+          if (hitGround) this.spark(b.x, b.y, 0x8d99ae);
+          b.destroy();
+        }
+      } else if (b.y < 0) {
         b.destroy();
       }
     }
     for (const b of this.enemyBullets.getChildren().slice()) {
-      if (b.x < left || b.x > right) b.destroy();
+      if (b.y >= this.groundAt(b.x)) {
+        this.spark(b.x, b.y, 0x8d99ae);
+        b.destroy();
+      } else if (b.x < left || b.x > right || b.y < 0) {
+        b.destroy();
+      }
     }
     for (const b of this.airBullets.getChildren().slice()) {
-      if (b.y >= GROUND_Y) {
-        this.spark(b.x, GROUND_Y - 2, 0xff4d6d);
+      const groundY = this.groundAt(b.x);
+      if (b.y >= groundY) {
+        this.spark(b.x, groundY - 2, 0xff4d6d);
         b.destroy();
       }
     }
