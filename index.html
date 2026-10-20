@@ -4,9 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="盾擊前線">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#000000">
   <title>盾擊前線</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <style>
     html, body {
       margin: 0;
@@ -45,7 +50,8 @@
       #rotate { display: flex; }
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <!-- Phaser 3.80.1 放在專案裡，離線也能載入 -->
+  <script src="lib/phaser.min.js"></script>
 </head>
 <body>
   <div id="game"></div>
@@ -54,5 +60,11 @@
     <div>請將手機轉成橫向來遊玩</div>
   </div>
   <script type="module" src="src/main.js"></script>
+  <script>
+    // 註冊 Service Worker：第一次開啟後就能離線玩、也能加到主畫面
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+    }
+  </script>
 </body>
 </html>
