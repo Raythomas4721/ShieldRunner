@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#000000">
+  <title>盾擊前線</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000000;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    #game { position: fixed; inset: 0; }
+    /* 手機直拿時提示轉成橫向（iOS 無法鎖定方向） */
+    #rotate {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background: #000000;
+      color: #f1faee;
+      font: bold 22px "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    #rotate .phone {
+      width: 40px;
+      height: 70px;
+      border: 4px solid #ffd60a;
+      border-radius: 8px;
+      animation: turn 1.6s ease-in-out infinite;
+    }
+    @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+    @media (orientation: portrait) and (pointer: coarse) {
+      #rotate { display: flex; }
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="rotate">
+    <div class="phone"></div>
+    <div>請將手機轉成橫向來遊玩</div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
