@@ -30,7 +30,7 @@ export default class ResultScene extends Phaser.Scene {
     const parts = [`距離 ${reward.distance}`, `擊殺 ${reward.kills}`];
     if (reward.bonus) parts.push(`任務獎勵 ${reward.bonus}`);
     const notes = [];
-    if (reward.mul > 1) notes.push(`加成 ×${reward.mul.toFixed(1)}`);
+    if (reward.mul !== 1) notes.push(`倍率 ×${+reward.mul.toFixed(2)}`); // 升級加成 × 難度
     if (reward.halved) notes.push(retreat ? '撤退減半' : '陣亡減半');
     this.add.text(cx, 145, `金幣 +${reward.total}（${parts.join(' + ')}${notes.length ? `，${notes.join('，')}` : ''}）　持有 ${coins}`, {
       fontFamily: FONT, fontSize: '19px', color: '#ffd60a',

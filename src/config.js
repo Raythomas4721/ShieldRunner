@@ -118,6 +118,37 @@ export const COINS = {
   deathMul: 0.5,                        // 陣亡時金幣倍率
 };
 
+// 難度：damageMul 玩家受到的傷害、fireMul 敵人開火間隔與間距（越大越輕鬆）、coinMul 金幣倍率
+export const DIFFICULTY = {
+  easy: { name: '簡單', damageMul: 0.6, fireMul: 1.25, coinMul: 0.8 },
+  normal: { name: '普通', damageMul: 1, fireMul: 1, coinMul: 1 },
+  hard: { name: '困難', damageMul: 1.3, fireMul: 0.85, coinMul: 1.3 },
+};
+
+// 觸控按鈕配置：標準與大按鈕兩種；左手模式時整組左右對調
+export const CONTROL_LAYOUTS = {
+  normal: {
+    name: '標準',
+    hitScale: 1.2, // 判定範圍比按鈕外觀大一點，比較好按
+    buttons: [
+      { key: 'move', label: '前進', x: 120, y: 445, r: 70, color: 0x2a9d8f },
+      { key: 'air', label: '對空', x: 530, y: 465, r: 50, color: 0x4361ee },
+      { key: 'shield', label: '盾牌', x: 670, y: 455, r: 58, color: 0x4cc9f0 },
+      { key: 'fire', label: '開火', x: 840, y: 445, r: 70, color: 0xe76f51 },
+    ],
+  },
+  large: {
+    name: '大',
+    hitScale: 1.1,
+    buttons: [
+      { key: 'move', label: '前進', x: 130, y: 440, r: 82, color: 0x2a9d8f },
+      { key: 'air', label: '對空', x: 500, y: 468, r: 58, color: 0x4361ee },
+      { key: 'shield', label: '盾牌', x: 668, y: 455, r: 68, color: 0x4cc9f0 },
+      { key: 'fire', label: '開火', x: 840, y: 440, r: 82, color: 0xe76f51 },
+    ],
+  },
+};
+
 // ai：'shooter' 站著開槍；'charger' 衝過來近戰
 // burst/burstGapMs：一次連發幾發、間隔；guard：正面持盾，開火前後才放下（openMs）
 // tip：第一次遇到時畫面上的提示

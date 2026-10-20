@@ -1,9 +1,10 @@
 import {
   GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
-  COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS,
+  COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS, DIFFICULTY,
   missionConfig, raidPoints, difficultyAt, playerStats,
 } from '../config.js';
 import Terrain from '../systems/Terrain.js';
+import Tutorial from '../systems/Tutorial.js';
 import Background from '../systems/Background.js';
 import { loadSave, writeSave } from '../save.js';
 import Player from '../objects/Player.js';
@@ -30,6 +31,7 @@ export default class GameScene extends Phaser.Scene {
     // 重新進入時 Arcade 世界會沿用上一局的暫停狀態
     this.physics.resume();
     this.mission = missionConfig(this.missionNo);
+    this.mode = DIFFICULTY[this.save.difficulty] || DIFFICULTY.normal;
 
     this.startX = PLAYER_SCREEN_X;
     this.evacX = this.startX + this.mission.length * PX_PER_METER;
@@ -49,6 +51,7 @@ export default class GameScene extends Phaser.Scene {
     this.enemyBullets = this.physics.add.group();
     this.airBullets = this.physics.add.group();
     this.coverGroup = this.physics.add.group();
+    this.counters = { blocks: 0, parries: 0 }; // 教學提示用
     this.kills = 0;
     this.killCoins = 0;
     this.meters = 0;
@@ -69,9 +72,11 @@ export default class GameScene extends Phaser.Scene {
     this.airRaid = new AirRaid(this);
     this.raidPoints = raidPoints(this.mission.raids);
     this.raidIndex = 0;
-    this.controls = new TouchControls(this);
+    this.controls = new TouchControls(this, { size: this.save.buttonSize, leftHanded: this.save.leftHanded });
     this.hud = new HUD(this);
     this.createPauseButton();
+    // 第一次玩任務 1 才有新手教學（設定裡可以重看）
+    this.tutorial = this.missionNo === 1 && !this.save.tutorialDone ? new Tutorial(this, this.controls) : null;
     this.banner(`任務 ${this.mission.number}：前進 ${this.mission.length} 公尺，抵達撤離點`, '#ffffff', 2500);
 
     // 物理更新後再移動鏡頭，避免畫面延遲一幀
@@ -116,7 +121,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.meters = Phaser.Math.Clamp(Math.floor((this.player.x - this.startX) / PX_PER_METER), 0, this.mission.length);
     const progress = this.meters / this.mission.length;
-    const difficulty = difficultyAt(this.mission, progress);
+    const difficulty = difficultyAt(this.mission, progress) * this.mode.fireMul;
     this.spawner.update(this.player.x, difficulty);
     for (const e of this.enemies) e.update(time, this.player.x, difficulty);
     for (const s of this.snipers) s.update(time, this.player);
@@ -130,6 +135,7 @@ export default class GameScene extends Phaser.Scene {
     this.checkPickups();
     this.cleanup();
     this.hud.update(this, time);
+    if (this.tutorial) this.tutorial.update(time);
 
     if (this.player.x >= this.evacX) this.finish(true);
   }
@@ -368,6 +374,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   parryEffect(x, y) {
+    this.counters.parries++;
     this.sfx('parry');
     vibrate(20);
     const ring = this.add.circle(x, y, 10).setStrokeStyle(3, 0x4cc9f0).setDepth(20);
@@ -376,6 +383,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   blockWithShield(cost, x, y) {
+    this.counters.blocks++;
     this.spark(x, y, 0x4cc9f0);
     if (this.player.shield.absorb(cost)) {
       this.player.stun(this.time.now);
@@ -395,8 +403,10 @@ export default class GameScene extends Phaser.Scene {
     this.damagePlayer(damage);
   }
 
-  damagePlayer(amount) {
+  // 所有玩家受到的傷害都經過這裡，套用難度倍率
+  damagePlayer(rawAmount) {
     if (this.over) return;
+    const amount = Math.max(1, Math.round(rawAmount * this.mode.damageMul));
     this.cameras.main.shake(100, 0.006);
     this.sfx('hurt');
     vibrate(40);
@@ -593,8 +603,9 @@ export default class GameScene extends Phaser.Scene {
     const distance = Math.floor(this.meters / COINS.perMeters);
     const bonus = victory ? COINS.missionBonus(this.missionNo) : 0;
     const subtotal = distance + this.killCoins + bonus;
-    const total = Math.round(subtotal * this.stats.coinMul * (victory ? 1 : COINS.deathMul));
-    return { distance, kills: this.killCoins, bonus, mul: this.stats.coinMul, halved: !victory, total };
+    const mul = this.stats.coinMul * this.mode.coinMul; // 升級加成 × 難度倍率
+    const total = Math.round(subtotal * mul * (victory ? 1 : COINS.deathMul));
+    return { distance, kills: this.killCoins, bonus, mul, halved: !victory, total };
   }
 
   // retreat：從暫停選單撤退，跟陣亡一樣結算（金幣減半、重打本關）
@@ -610,8 +621,10 @@ export default class GameScene extends Phaser.Scene {
     const reward = this.calcReward(victory);
     save.totalKills += this.kills;
     save.coins += reward.total;
-    if (victory) save.mission = this.missionNo + 1;
+    if (victory) save.mission = Math.max(save.mission, this.missionNo + 1); // 重打舊關卡不會讓進度倒退
+    if (victory && this.missionNo === 1) save.tutorialDone = true;
     writeSave(save);
+    if (this.tutorial) this.tutorial.hide();
 
     this.sfx(victory ? 'victory' : 'defeat');
     if (victory) {

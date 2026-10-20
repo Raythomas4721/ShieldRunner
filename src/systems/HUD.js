@@ -31,7 +31,8 @@ export default class HUD {
     this.bar(70, 48, 220, 16, shield.durability / shield.max, shield.broken ? 0x6c757d : 0x4cc9f0);
 
     // 任務進度條
-    this.missionText.setText(`任務 ${mission.number}　${meters} / ${mission.length} m`);
+    const modeTag = game.mode.name === '普通' ? '' : `（${game.mode.name}）`;
+    this.missionText.setText(`任務 ${mission.number}${modeTag}　${meters} / ${mission.length} m`);
     this.bar(GAME_W / 2 - PROGRESS_W / 2, 44, PROGRESS_W, 8, meters / mission.length, 0x2dc653);
 
     // Boss 進入畫面後顯示血條

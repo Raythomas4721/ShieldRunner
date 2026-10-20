@@ -1,29 +1,30 @@
-import { GAME_W, GAME_H, FONT } from '../config.js';
-
-const BUTTONS = [
-  { key: 'move', label: '前進', x: 120, y: GAME_H - 95, r: 70, color: 0x2a9d8f },
-  { key: 'air', label: '對空', x: GAME_W - 430, y: GAME_H - 75, r: 50, color: 0x4361ee },
-  { key: 'shield', label: '盾牌', x: GAME_W - 290, y: GAME_H - 85, r: 58, color: 0x4cc9f0 },
-  { key: 'fire', label: '開火', x: GAME_W - 120, y: GAME_H - 95, r: 70, color: 0xe76f51 },
-];
-const HIT_SCALE = 1.2; // 判定範圍比按鈕外觀大一點，比較好按
+import { GAME_W, FONT, CONTROL_LAYOUTS } from '../config.js';
 
 // 每幀檢查所有按下中的觸控點，支援多指同時按住不同按鈕
+// size：'normal' / 'large'；leftHanded：整組按鈕左右對調（左手開火）
 export default class TouchControls {
-  constructor(scene) {
+  constructor(scene, { size = 'normal', leftHanded = false } = {}) {
     this.scene = scene;
-    this.buttons = BUTTONS.map((b) => {
-      const circle = scene.add.circle(b.x, b.y, b.r, b.color, 0.35)
+    const layout = CONTROL_LAYOUTS[size] || CONTROL_LAYOUTS.normal;
+    this.hitScale = layout.hitScale;
+    this.buttons = layout.buttons.map((def) => {
+      const b = { ...def, x: leftHanded ? GAME_W - def.x : def.x };
+      b.circle = scene.add.circle(b.x, b.y, b.r, b.color, 0.35)
         .setStrokeStyle(3, 0xffffff, 0.6)
         .setScrollFactor(0)
         .setDepth(100);
       scene.add.text(b.x, b.y, b.label, {
         fontFamily: FONT, fontSize: b.r < 60 ? '22px' : '26px', color: '#ffffff', fontStyle: 'bold',
       }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
-      return { ...b, circle };
+      return b;
     });
     this.keys = scene.input.keyboard.addKeys('RIGHT,D,SPACE,J,SHIFT,K,L,UP,W');
     this.debug = null; // 測試用：可從主控台強制指定輸入，例如 { move: true }
+  }
+
+  // 取得某個按鈕的位置與大小（教學提示用來標示按鈕）
+  button(key) {
+    return this.buttons.find((b) => b.key === key);
   }
 
   read() {
@@ -31,7 +32,7 @@ export default class TouchControls {
     for (const p of this.scene.input.manager.pointers) {
       if (!p.isDown) continue;
       for (const b of this.buttons) {
-        if (Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= b.r * HIT_SCALE) state[b.key] = true;
+        if (Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= b.r * this.hitScale) state[b.key] = true;
       }
     }
     const k = this.keys;
