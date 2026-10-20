@@ -42,9 +42,10 @@ export default class MenuScene extends Phaser.Scene {
       }
       this.scene.start('Game', { mission: save.mission });
     };
-    makeButton(this, 220, 465, 260, 64, `開始任務 ${save.mission}`, 0x2a9d8f, start, { fontSize: 24 });
-    makeButton(this, 500, 465, 220, 64, '軍火庫', 0xe85d04, () => this.scene.start('Shop'), { fontSize: 24 });
-    makeButton(this, 750, 465, 200, 64, '設定', 0x415a77, () => this.scene.start('Settings'), { fontSize: 24 });
+    makeButton(this, 175, 465, 240, 64, `開始任務 ${save.mission}`, 0x2a9d8f, start, { fontSize: 24 });
+    makeButton(this, 410, 465, 200, 64, '選擇任務', 0x7b2cbf, () => this.scene.start('Missions'), { fontSize: 22 });
+    makeButton(this, 615, 465, 180, 64, '軍火庫', 0xe85d04, () => this.scene.start('Shop'), { fontSize: 22 });
+    makeButton(this, 805, 465, 170, 64, '設定', 0x415a77, () => this.scene.start('Settings'), { fontSize: 22 });
     this.input.keyboard.once('keydown-SPACE', start);
     this.input.keyboard.once('keydown-ENTER', start);
   }

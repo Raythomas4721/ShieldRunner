@@ -118,6 +118,13 @@ export const COINS = {
   deathMul: 0.5,                        // 陣亡時金幣倍率
 };
 
+// 連殺：前一次擊殺後 windowMs 內再殺一個就算連殺，第 N 連殺額外得 coinPer ×（N-1）金幣
+export const STREAK = { windowMs: 2500, coinPer: 1 };
+
+// 關卡星等：完成任務、剩餘生命 ≥ hpRatio、限時內完成（每公尺 parSecPerMeter 秒）
+export const STARS = { hpRatio: 0.5, parSecPerMeter: 0.22 };
+export const parTime = (lengthM) => Math.round(lengthM * STARS.parSecPerMeter);
+
 // 難度：damageMul 玩家受到的傷害、fireMul 敵人開火間隔與間距（越大越輕鬆）、coinMul 金幣倍率
 export const DIFFICULTY = {
   easy: { name: '簡單', damageMul: 0.6, fireMul: 1.25, coinMul: 0.8 },

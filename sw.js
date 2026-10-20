@@ -28,6 +28,7 @@ const PRECACHE = [
   'src/scenes/ResultScene.js',
   'src/scenes/ShopScene.js',
   'src/scenes/SettingsScene.js',
+  'src/scenes/MissionSelectScene.js',
   'src/systems/Tutorial.js',
   'src/systems/AirRaid.js',
   'src/systems/Background.js',

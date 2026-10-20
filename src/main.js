@@ -6,6 +6,7 @@ import ResultScene from './scenes/ResultScene.js';
 import ShopScene from './scenes/ShopScene.js';
 import PauseScene from './scenes/PauseScene.js';
 import SettingsScene from './scenes/SettingsScene.js';
+import MissionSelectScene from './scenes/MissionSelectScene.js';
 import { loadSave } from './save.js';
 import { initSound, setSoundEnabled, setVibrateEnabled } from './systems/Sound.js';
 
@@ -28,7 +29,7 @@ const game = new Phaser.Game({
     arcade: { debug: false },
   },
   input: { activePointers: 4 }, // 多點觸控：同時按前進與開火
-  scene: [BootScene, MenuScene, GameScene, ResultScene, ShopScene, PauseScene, SettingsScene],
+  scene: [BootScene, MenuScene, GameScene, ResultScene, ShopScene, PauseScene, SettingsScene, MissionSelectScene],
 });
 
 // 方便在主控台除錯

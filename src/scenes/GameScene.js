@@ -1,7 +1,7 @@
 import {
   GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
-  COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS, DIFFICULTY,
-  missionConfig, raidPoints, difficultyAt, playerStats,
+  COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS, DIFFICULTY, STREAK, STARS,
+  missionConfig, raidPoints, difficultyAt, playerStats, parTime,
 } from '../config.js';
 import Terrain from '../systems/Terrain.js';
 import Tutorial from '../systems/Tutorial.js';
@@ -55,6 +55,10 @@ export default class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.killCoins = 0;
     this.meters = 0;
+    this.elapsed = 0;             // 任務經過時間（暫停時不算），用來算限時星
+    this.streak = 0;
+    this.bestStreak = 0;
+    this.lastKillAt = -Infinity;
     this.over = false;
 
     // 碰撞登記順序 = 判定順序：掩體 → 盾牌 → 身體，同一幀內子彈會先被前面的擋下
@@ -119,6 +123,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.player.update(time, delta, input, blockX);
 
+    this.elapsed += delta;
     this.meters = Phaser.Math.Clamp(Math.floor((this.player.x - this.startX) / PX_PER_METER), 0, this.mission.length);
     const progress = this.meters / this.mission.length;
     const difficulty = difficultyAt(this.mission, progress) * this.mode.fireMul;
@@ -455,6 +460,7 @@ export default class GameScene extends Phaser.Scene {
     this.kills++;
     this.killCoins += enemy.def.coins;
     this.enemies = this.enemies.filter((e) => e !== enemy);
+    this.countStreak();
     if (enemy.def.boss) {
       // Boss 倒下：連續爆炸
       this.sfx('explosion');
@@ -464,6 +470,19 @@ export default class GameScene extends Phaser.Scene {
       }
       this.banner(`擊倒${enemy.def.name}！+${enemy.def.coins} 金幣`, '#ffd60a', 2500, 200);
     }
+  }
+
+  // 連殺：短時間內連續擊殺有額外金幣
+  countStreak() {
+    const now = this.time.now;
+    this.streak = now - this.lastKillAt <= STREAK.windowMs ? this.streak + 1 : 1;
+    this.lastKillAt = now;
+    this.bestStreak = Math.max(this.bestStreak, this.streak);
+    if (this.streak < 2) return;
+    const bonus = STREAK.coinPer * (this.streak - 1);
+    this.killCoins += bonus;
+    this.sfx('streak');
+    this.floatText(this.player.x + 40, this.player.y - 125, `${this.streak} 連殺！+${bonus}`, '#ff7b00');
   }
 
   // 火箭爆炸：範圍內的敵人受傷，掩體受到加倍傷害
@@ -623,6 +642,9 @@ export default class GameScene extends Phaser.Scene {
     save.coins += reward.total;
     if (victory) save.mission = Math.max(save.mission, this.missionNo + 1); // 重打舊關卡不會讓進度倒退
     if (victory && this.missionNo === 1) save.tutorialDone = true;
+    const stars = this.calcStars(victory);
+    if (stars.count > (save.stars[this.missionNo] || 0)) save.stars[this.missionNo] = stars.count;
+    stars.best = save.stars[this.missionNo] || 0;
     writeSave(save);
     if (this.tutorial) this.tutorial.hide();
 
@@ -647,7 +669,19 @@ export default class GameScene extends Phaser.Scene {
         totalAfter: save.totalKills,
         reward,
         coins: save.coins,
+        stars,
+        bestStreak: this.bestStreak,
       });
     });
+  }
+
+  // 三顆星：完成任務、剩餘生命夠多、限時內完成（沒完成任務就沒有星）
+  calcStars(victory) {
+    const par = parTime(this.mission.length);
+    const timeSec = Math.round(this.elapsed / 1000);
+    const earned = victory
+      ? [true, this.player.hp / this.player.maxHp >= STARS.hpRatio, timeSec <= par]
+      : [false, false, false];
+    return { earned, count: earned.filter(Boolean).length, par, timeSec };
   }
 }
