@@ -1,26 +1,42 @@
 import { SNIPER, COLORS } from '../config.js';
 
 // 狙擊手站在高塔上：紅線追蹤 → 鎖定閃爍 → 開槍 → 休息，循環
+// 可以被打：被打中會中斷瞄準（壓制），血量歸零或高塔被炸就會摔下來
 export default class Sniper {
-  constructor(scene, x) {
+  constructor(scene, group, x) {
     this.scene = scene;
+    this.type = 'sniper';
+    this.def = SNIPER; // 與地面敵人共用 name / coins / tip，讓擊殺與提示走同一套流程
     this.x = x;
-    const baseY = scene.terrain.heightAt(x);
-    const topY = baseY - SNIPER.towerHeight;
-    this.tower = scene.add.image(x, baseY, 'tower').setOrigin(0.5, 1).setDepth(2);
-    this.sprite = scene.add.image(x, topY, 'sniper').setOrigin(0.5, 1).setDepth(4);
+    this.baseY = scene.terrain.heightAt(x);
+    const topY = this.baseY - SNIPER.towerHeight;
+    this.tower = scene.add.image(x, this.baseY, 'tower').setOrigin(0.5, 1).setDepth(2);
+    this.sprite = group.create(x, topY, 'sniper').setOrigin(0.5, 1).setDepth(4);
+    this.sprite.setData('ref', this);
     this.gunX = x - 30;
     this.gunY = topY - 30;
     this.laser = scene.add.graphics().setDepth(8);
+    this.hp = SNIPER.hp;
+    this.alive = true;
+    this.seen = false;
     this.state = 'idle';
     this.stateUntil = 0;
     this.lockX = 0;
     this.lockY = 0;
   }
 
+  get chestY() {
+    return this.sprite.y - 29;
+  }
+
   update(time, player) {
     this.laser.clear();
+    if (!this.alive) return;
     const dist = this.x - player.x;
+    if (!this.seen && dist < SNIPER.range) {
+      this.seen = true;
+      this.scene.onEnemySeen(this);
+    }
     // 玩家走到塔下或超過塔就打不到了
     if (player.dead || dist < 40 || dist > SNIPER.range) {
       this.state = 'idle';
@@ -59,6 +75,47 @@ export default class Sniper {
     this.laser.lineStyle(width, COLORS.laser, alpha).lineBetween(this.gunX, this.gunY, endX, groundY);
   }
 
+  // 受到傷害，回傳是否被擊殺；沒死也會被打斷，重新從頭瞄準
+  hit(damage) {
+    if (!this.alive) return false;
+    this.hp -= damage;
+    this.sprite.setTintFill(0xffffff);
+    this.scene.time.delayedCall(60, () => this.alive && this.sprite.clearTint());
+    if (this.hp > 0) {
+      if (this.state === 'track' || this.state === 'lock') {
+        this.state = 'cooldown';
+        this.stateUntil = this.scene.time.now + 500;
+        this.scene.floatText(this.x, this.sprite.y - 70, '壓制！', '#8ecae6');
+      }
+      return false;
+    }
+    this.die(false);
+    return true;
+  }
+
+  // 火箭爆炸：連塔一起炸倒
+  topple() {
+    if (!this.alive) return false;
+    this.hp = 0;
+    this.die(true);
+    return true;
+  }
+
+  die(withTower) {
+    this.alive = false;
+    this.state = 'idle';
+    this.laser.clear();
+    this.sprite.body.enable = false;
+    // 從塔上摔下來
+    this.scene.tweens.add({
+      targets: this.sprite, y: this.baseY, angle: 90, alpha: 0, duration: 600, ease: 'Quad.easeIn',
+      onComplete: () => this.sprite.destroy(),
+    });
+    if (withTower) {
+      this.scene.tweens.add({ targets: this.tower, angle: 75, alpha: 0.3, duration: 700, ease: 'Quad.easeIn' });
+    }
+  }
+
   stop() {
     this.state = 'idle';
     this.laser.clear();
@@ -66,7 +123,7 @@ export default class Sniper {
 
   destroy() {
     this.tower.destroy();
-    this.sprite.destroy();
+    if (this.sprite.active) this.sprite.destroy();
     this.laser.destroy();
   }
 }

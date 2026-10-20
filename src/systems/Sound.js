@@ -30,6 +30,19 @@ export function setSoundEnabled(value) {
   enabled = value;
 }
 
+// 手機震動（Android 支援；iOS Safari 不支援，會直接略過）
+let vibrateEnabled = true;
+
+export function setVibrateEnabled(value) {
+  vibrateEnabled = value;
+}
+
+export function vibrate(ms) {
+  // 瀏覽器規定使用者點過畫面後才能震動
+  const activated = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  if (vibrateEnabled && navigator.vibrate && activated) navigator.vibrate(ms);
+}
+
 export function sfx(name) {
   if (!enabled || !ctx || ctx.state !== 'running') return;
   const play = SOUNDS[name];
@@ -81,6 +94,7 @@ const SOUNDS = {
   enemyDie: (t) => tone(t, { freq: 420, to: 70, dur: 0.22, type: 'sawtooth', vol: 0.08 }),
   ting: (t) => { tone(t, { freq: 2400, dur: 0.08, type: 'triangle', vol: 0.1 }); tone(t, { freq: 3600, dur: 0.05, type: 'sine', vol: 0.05 }); },
   cover: (t) => noise(t, { dur: 0.05, vol: 0.08, filter: 600 }),
+  parry: (t) => { tone(t, { freq: 1800, dur: 0.12, type: 'triangle', vol: 0.14 }); tone(t, { freq: 2700, dur: 0.18, type: 'sine', vol: 0.1, at: 0.04 }); noise(t, { dur: 0.06, vol: 0.12, filter: 6000 }); },
   block: (t) => { tone(t, { freq: 1200, dur: 0.07, type: 'triangle', vol: 0.12 }); tone(t, { freq: 1800, dur: 0.05, type: 'triangle', vol: 0.06 }); },
   shieldBreak: (t) => { noise(t, { dur: 0.3, vol: 0.3, filter: 3000 }); tone(t, { freq: 600, to: 120, dur: 0.3, vol: 0.1 }); },
   hurt: (t) => tone(t, { freq: 220, to: 90, dur: 0.16, vol: 0.14 }),

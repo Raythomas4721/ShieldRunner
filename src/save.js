@@ -8,6 +8,7 @@ const DEFAULT_SAVE = {
   equipped: 'pistol',
   upgrades: { hp: 0, shield: 0, speed: 0, coin: 0 },
   sound: true,
+  vibrate: true,
 };
 
 export function loadSave() {

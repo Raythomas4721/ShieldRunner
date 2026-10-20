@@ -1,4 +1,4 @@
-import { GAME_W, FONT } from '../config.js';
+import { GAME_W, GAME_H, FONT } from '../config.js';
 
 const PROGRESS_W = 300;
 
@@ -15,6 +15,9 @@ export default class HUD {
     this.killText = fixed(scene.add.text(GAME_W - 20, 16, '', style).setOrigin(1, 0));
     this.ammoText = fixed(scene.add.text(GAME_W - 20, 44, '', style).setOrigin(1, 0));
     this.bossText = fixed(scene.add.text(GAME_W / 2, 62, '', { ...style, fontSize: '15px', color: '#ff006e' }).setOrigin(0.5, 0));
+    // 低血量時畫面邊緣閃紅光
+    this.danger = scene.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W - 8, GAME_H - 8)
+      .setStrokeStyle(8, 0xe63946).setScrollFactor(0).setDepth(99).setAlpha(0);
   }
 
   update(game, time) {
@@ -22,6 +25,8 @@ export default class HUD {
     const g = this.g;
     g.clear();
     this.bar(70, 20, 220, 16, player.hp / player.maxHp, 0xe63946);
+    const low = player.hp > 0 && player.hp / player.maxHp < 0.3;
+    this.danger.setAlpha(low ? 0.35 + 0.35 * Math.sin(time / 150) : 0);
     const shield = player.shield;
     this.bar(70, 48, 220, 16, shield.durability / shield.max, shield.broken ? 0x6c757d : 0x4cc9f0);
 

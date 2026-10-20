@@ -181,8 +181,12 @@ export const enemyPool = (n) => [
   ...(n >= 4 ? [['shielder', n]] : []),
 ];
 
-// 狙擊手：站在高塔上打不到，紅線鎖定後移動就能閃開
+// 狙擊手：站在高塔上，紅線鎖定後移動就能閃開
+// 進入射程可以打他（被打中會中斷瞄準＝壓制），火箭爆炸能把整座塔炸倒
 export const SNIPER = {
+  name: '狙擊手',
+  hp: 80,
+  coins: 15,
   towerHeight: 130,
   range: 820,       // 與玩家距離小於此值開始瞄準
   trackMs: 1400,    // 紅線追蹤玩家的時間
@@ -191,6 +195,16 @@ export const SNIPER = {
   hitRadius: 22,    // 開槍時玩家離鎖定點多近算命中
   damage: 30,
   shieldCost: 60,   // 用盾牌硬擋消耗的耐久
+  tip: '狙擊手：紅線閃爍就移動閃開，靠近開槍可打斷瞄準（火箭筒能炸倒高塔）',
+};
+
+// 完美格擋：子彈快打到時才舉盾（舉起後 windowMs 內擋下），不扣盾值還會反彈
+export const PARRY = {
+  windowMs: 220,
+  minDownMs: 300,        // 盾牌至少放下這麼久再舉起才算，避免一直連按
+  reflectDamageMul: 3,   // 反彈子彈的傷害倍率
+  minReflectDamage: 30,
+  sniperDamage: 80,      // 完美格擋狙擊：直接反彈打中狙擊手
 };
 
 // 直升機空襲：從頭頂掃射，要用「對空」盾擋或閃開

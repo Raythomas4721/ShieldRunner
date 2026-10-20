@@ -1,7 +1,7 @@
 import { GAME_W, FONT, RANKS, WEAPONS, rankIndexOf } from '../config.js';
 import { loadSave, writeSave } from '../save.js';
 import { makeButton } from '../ui.js';
-import { setSoundEnabled } from '../systems/Sound.js';
+import { setSoundEnabled, setVibrateEnabled } from '../systems/Sound.js';
 
 export default class MenuScene extends Phaser.Scene {
   constructor() {
@@ -27,8 +27,8 @@ export default class MenuScene extends Phaser.Scene {
     const tips = [
       '左下「前進」：按住前進，放開停下',
       '右下「開火」連射、「盾牌」擋正面、「對空」擋頭頂',
-      '敵人變黃 = 準備開火，快舉盾！',
-      '紅線閃爍 = 狙擊手鎖定，馬上移動或停下就能閃開',
+      '敵人變黃 = 準備開火，快舉盾！子彈快到時才舉 = 完美格擋，還會反彈',
+      '紅線閃爍 = 狙擊手鎖定，馬上移動或停下就能閃開；靠近可以打他',
       '沙包、木箱可以躲；白色補血包走過去就能撿',
       '電腦：→ 前進　J 開火　K 盾牌　L 對空',
     ];
@@ -48,13 +48,17 @@ export default class MenuScene extends Phaser.Scene {
     this.input.keyboard.once('keydown-SPACE', start);
     this.input.keyboard.once('keydown-ENTER', start);
 
-    // 右上角音效開關，設定會存檔
-    const label = () => `音效：${save.sound ? '開' : '關'}`;
-    const btn = makeButton(this, GAME_W - 90, 36, 140, 44, label(), 0x415a77, () => {
-      save.sound = !save.sound;
-      setSoundEnabled(save.sound);
-      writeSave(save);
-      btn.text.setText(label());
-    }, { fontSize: 18 });
+    // 右上角音效、震動開關，設定會存檔
+    const toggle = (y, name, key, apply) => {
+      const label = () => `${name}：${save[key] ? '開' : '關'}`;
+      const btn = makeButton(this, GAME_W - 90, y, 140, 44, label(), 0x415a77, () => {
+        save[key] = !save[key];
+        apply(save[key]);
+        writeSave(save);
+        btn.text.setText(label());
+      }, { fontSize: 18 });
+    };
+    toggle(36, '音效', 'sound', setSoundEnabled);
+    toggle(88, '震動', 'vibrate', setVibrateEnabled);
   }
 }

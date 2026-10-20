@@ -133,9 +133,16 @@ export default class Enemy {
       if (this.aiming) this.sprite.setTintFill(COLORS.aim);
       else this.sprite.clearTint();
     });
-    if (this.hp > 0) return false;
+    if (this.hp > 0) {
+      // 被打中縮一下，看起來有被擊中的反應
+      this.scene.tweens.killTweensOf(this.sprite);
+      this.sprite.setScale(1);
+      this.scene.tweens.add({ targets: this.sprite, scaleX: 0.88, scaleY: 1.05, duration: 50, yoyo: true });
+      return false;
+    }
 
     this.alive = false;
+    this.sprite.setScale(1);
     this.sprite.setVelocityX(0);
     this.sprite.body.enable = false;
     if (this.shield) this.shield.destroy();

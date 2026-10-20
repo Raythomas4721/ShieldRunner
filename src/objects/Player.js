@@ -55,7 +55,7 @@ export default class Player {
     let shieldMode = null;
     if (!stunned && input.air) shieldMode = 'air';
     else if (!stunned && input.shield) shieldMode = 'front';
-    this.shield.update(delta, shieldMode, this.x, this.y);
+    this.shield.update(delta, shieldMode, this.x, this.y, time);
     const shielding = this.shield.raised;
 
     let vx = 0;

@@ -1,6 +1,6 @@
 import {
   GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
-  COVER_SHOOT_OVER, SNIPER, AIR_RAID, HEALTH_PACK, WEAPONS, COINS,
+  COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS,
   missionConfig, raidPoints, difficultyAt, playerStats,
 } from '../config.js';
 import Terrain from '../systems/Terrain.js';
@@ -14,7 +14,7 @@ import Spawner from '../systems/Spawner.js';
 import AirRaid from '../systems/AirRaid.js';
 import TouchControls from '../systems/TouchControls.js';
 import HUD from '../systems/HUD.js';
-import { sfx } from '../systems/Sound.js';
+import { sfx, vibrate } from '../systems/Sound.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -71,13 +71,37 @@ export default class GameScene extends Phaser.Scene {
     this.raidIndex = 0;
     this.controls = new TouchControls(this);
     this.hud = new HUD(this);
+    this.createPauseButton();
     this.banner(`任務 ${this.mission.number}：前進 ${this.mission.length} 公尺，抵達撤離點`, '#ffffff', 2500);
 
     // 物理更新後再移動鏡頭，避免畫面延遲一幀
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncCamera, this);
+    // 切到別的 App 或關掉螢幕時自動暫停
+    this.game.events.on(Phaser.Core.Events.HIDDEN, this.openPause, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.syncCamera, this);
+      this.game.events.off(Phaser.Core.Events.HIDDEN, this.openPause, this);
     });
+  }
+
+  // 右上角暫停鈕（鍵盤 P / Esc）
+  createPauseButton() {
+    const x = GAME_W - 36;
+    const y = 104;
+    const btn = this.add.circle(x, y, 22, 0x415a77, 0.6).setStrokeStyle(2, 0xffffff, 0.6)
+      .setScrollFactor(0).setDepth(100).setInteractive({ useHandCursor: true });
+    this.add.text(x, y, 'II', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', fontStyle: 'bold' })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    btn.on('pointerdown', () => this.openPause());
+    this.input.keyboard.on('keydown-P', () => this.openPause());
+    this.input.keyboard.on('keydown-ESC', () => this.openPause());
+  }
+
+  openPause() {
+    if (this.over || !this.scene.isActive()) return;
+    this.sfx('click');
+    this.scene.launch('Pause');
+    this.scene.pause();
   }
 
   update(time, delta) {
@@ -177,7 +201,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   spawnSniper(x) {
-    this.snipers.push(new Sniper(this, x));
+    this.snipers.push(new Sniper(this, this.enemyGroup, x));
   }
 
   spawnHealthPack(x) {
@@ -189,22 +213,23 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------- 子彈 ----------
 
-  // 自動瞄準前方射程內最近的敵人（有高低差時子彈會斜著飛），沒有目標就水平射擊
+  // 自動瞄準前方射程內最近的敵人（含塔上的狙擊手），有高低差時子彈會斜著飛；沒有目標就水平射擊
   aimAngle(x, y, weapon) {
     let target = null;
-    for (const e of this.enemies) {
+    for (const e of [...this.enemies, ...this.snipers]) {
       if (!e.alive) continue;
       const dx = e.x - x;
-      if (dx <= 0 || dx > weapon.range + 40) continue;
+      if (dx <= 10 || dx > weapon.range + 40) continue;
       if (!target || e.x < target.x) target = e;
     }
     if (!target) return 0;
-    return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -0.6, 0.6);
+    return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -0.9, 0.9);
   }
 
   // 霰彈槍一次射出多發，呈上下扇形散開
   firePlayerBullet(x, y, weapon) {
     this.sfx(weapon.sound);
+    this.muzzleFlash(x, y, 0xffd60a);
     const base = this.aimAngle(x, y, weapon);
     const count = weapon.pellets || 1;
     for (let i = 0; i < count; i++) {
@@ -236,6 +261,7 @@ export default class GameScene extends Phaser.Scene {
       this.sfx('enemyShot');
     }
     b.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+    this.muzzleFlash(x, y, 0xff7b00);
   }
 
   // 衝鋒兵貼身攻擊：盾牌擋不住
@@ -271,6 +297,15 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     if (p.shield.mode === 'front') {
+      if (p.shield.canParry(this.time.now)) {
+        // 完美格擋狙擊：子彈原路彈回塔上
+        this.parryEffect(p.x + 26, p.y - 30);
+        const back = this.add.graphics().setDepth(9);
+        back.lineStyle(3, 0x4cc9f0, 1).lineBetween(p.x + 26, p.y - 30, sniper.x, sniper.chestY);
+        this.tweens.add({ targets: back, alpha: 0, duration: 250, onComplete: () => back.destroy() });
+        if (sniper.hit(PARRY.sniperDamage)) this.onKill(sniper);
+        return;
+      }
       this.blockWithShield(SNIPER.shieldCost, p.x + 26, p.y - 30);
       return;
     }
@@ -306,10 +341,38 @@ export default class GameScene extends Phaser.Scene {
 
   onShieldBlock(bullet) {
     if (!bullet.active || this.over) return;
+    if (this.player.shield.canParry(this.time.now)) {
+      this.parry(bullet);
+      return;
+    }
     const cost = bullet.getData('shieldCost');
     const { x, y } = bullet;
     bullet.destroy();
     this.blockWithShield(cost, x, y);
+  }
+
+  // 完美格擋：不扣盾值；正面子彈原路反彈回去打敵人（對空的子彈只擋掉）
+  parry(bullet) {
+    const { x, y } = bullet;
+    const { x: vx, y: vy } = bullet.body.velocity;
+    const damage = Math.max(PARRY.minReflectDamage, bullet.getData('damage') * PARRY.reflectDamageMul);
+    const texture = bullet.texture.key;
+    bullet.destroy();
+    this.parryEffect(x, y);
+    if (texture === 'abullet') return;
+
+    const b = this.playerBullets.create(x + 8, y, texture === 'heavy' ? 'heavy' : 'pbullet').setTint(0x4cc9f0);
+    b.setData({ damage, originX: x, maxX: x + 900, pierce: false, explosive: null, hitRefs: new Set() });
+    b.setVelocity(-vx * 1.5, -vy * 1.5);
+    b.setRotation(Math.atan2(-vy, -vx));
+  }
+
+  parryEffect(x, y) {
+    this.sfx('parry');
+    vibrate(20);
+    const ring = this.add.circle(x, y, 10).setStrokeStyle(3, 0x4cc9f0).setDepth(20);
+    this.tweens.add({ targets: ring, scale: 3, alpha: 0, duration: 250, onComplete: () => ring.destroy() });
+    this.floatText(this.player.x, this.player.y - 90, '完美格擋！', '#4cc9f0');
   }
 
   blockWithShield(cost, x, y) {
@@ -319,6 +382,7 @@ export default class GameScene extends Phaser.Scene {
       this.cameras.main.shake(200, 0.01);
       this.floatText(this.player.x, this.player.y - 90, '破盾！', '#ffd60a');
       this.sfx('shieldBreak');
+      vibrate(90);
     } else {
       this.sfx('block');
     }
@@ -335,6 +399,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.over) return;
     this.cameras.main.shake(100, 0.006);
     this.sfx('hurt');
+    vibrate(40);
+    this.damageNumber(this.player.x, this.player.y - 70, amount, '#ff4d6d');
     if (this.player.takeDamage(amount)) this.finish(false);
   }
 
@@ -365,10 +431,16 @@ export default class GameScene extends Phaser.Scene {
   }
 
   damageEnemy(enemy, damage) {
+    this.damageNumber(enemy.x, enemy.chestY - 30, damage, '#ffd60a');
     if (!enemy.hit(damage)) {
       this.sfx('enemyHit');
       return;
     }
+    this.onKill(enemy);
+  }
+
+  // 擊殺結算：地面敵人、狙擊手、Boss 共用
+  onKill(enemy) {
     this.sfx('enemyDie');
     this.kills++;
     this.killCoins += enemy.def.coins;
@@ -398,6 +470,13 @@ export default class GameScene extends Phaser.Scene {
 
     for (const e of this.enemies.slice()) {
       if (e.alive && Math.abs(e.x - x) <= radius) this.damageEnemy(e, damage);
+    }
+    // 炸到狙擊塔：連塔帶人一起倒
+    for (const s of this.snipers) {
+      if (s.alive && Math.abs(s.x - x) <= radius && s.topple()) {
+        this.floatText(s.x, s.baseY - 160, '炸倒高塔！', '#ff7b00');
+        this.onKill(s);
+      }
     }
     for (const c of this.coverGroup.getChildren().slice()) {
       if (c.body.enable && Math.abs(c.x - x) <= radius) c.getData('ref').hit(damage * coverMul);
@@ -473,6 +552,20 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: c, scale: 2.5, alpha: 0, duration: 180, onComplete: () => c.destroy() });
   }
 
+  // 槍口火光
+  muzzleFlash(x, y, color) {
+    const f = this.add.circle(x, y, 7, color, 0.9).setDepth(20);
+    this.tweens.add({ targets: f, scale: 1.6, alpha: 0, duration: 70, onComplete: () => f.destroy() });
+  }
+
+  // 傷害數字：小字往上飄，位置稍微錯開避免連射時疊在一起
+  damageNumber(x, y, amount, color) {
+    const t = this.add.text(x + Phaser.Math.Between(-10, 10), y, `${Math.round(amount)}`, {
+      fontFamily: FONT, fontSize: '18px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(30);
+    this.tweens.add({ targets: t, y: y - 26, alpha: 0, duration: 450, onComplete: () => t.destroy() });
+  }
+
   floatText(x, y, msg, color) {
     const t = this.add.text(x, y, msg, {
       fontFamily: FONT, fontSize: '28px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 4,
@@ -504,7 +597,8 @@ export default class GameScene extends Phaser.Scene {
     return { distance, kills: this.killCoins, bonus, mul: this.stats.coinMul, halved: !victory, total };
   }
 
-  finish(victory) {
+  // retreat：從暫停選單撤退，跟陣亡一樣結算（金幣減半、重打本關）
+  finish(victory, retreat = false) {
     if (this.over) return;
     this.over = true;
     this.physics.pause();
@@ -522,14 +616,17 @@ export default class GameScene extends Phaser.Scene {
     this.sfx(victory ? 'victory' : 'defeat');
     if (victory) {
       this.banner('抵達撤離點！任務完成', '#2dc653', 0);
+    } else if (retreat) {
+      this.banner('撤退', '#ffd60a', 0).setFontSize(56);
     } else {
       this.player.sprite.setTint(0x555555);
       this.tweens.add({ targets: this.player.sprite, angle: -80, duration: 400 });
       this.banner('陣亡', '#e63946', 0).setFontSize(56);
     }
-    this.time.delayedCall(1300, () => {
+    this.time.delayedCall(retreat ? 700 : 1300, () => {
       this.scene.start('Result', {
         victory,
+        retreat,
         mission: this.missionNo,
         meters: this.meters,
         kills: this.kills,

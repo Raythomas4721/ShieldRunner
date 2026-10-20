@@ -15,11 +15,11 @@ export default class ResultScene extends Phaser.Scene {
   }
 
   create() {
-    const { victory, mission, meters, kills, totalBefore, totalAfter, reward, coins } = this.result;
+    const { victory, retreat, mission, meters, kills, totalBefore, totalAfter, reward, coins } = this.result;
     const cx = GAME_W / 2;
     this.cameras.main.setBackgroundColor('#05070d');
 
-    this.add.text(cx, 50, victory ? '任務完成！' : '任務失敗', {
+    this.add.text(cx, 50, victory ? '任務完成！' : retreat ? '撤退' : '任務失敗', {
       fontFamily: FONT, fontSize: '50px', color: victory ? '#2dc653' : '#e63946', fontStyle: 'bold',
     }).setOrigin(0.5);
     this.add.text(cx, 105, `任務 ${mission}　前進 ${meters} 公尺　擊殺 ${kills} 名敵人`, {
@@ -31,7 +31,7 @@ export default class ResultScene extends Phaser.Scene {
     if (reward.bonus) parts.push(`任務獎勵 ${reward.bonus}`);
     const notes = [];
     if (reward.mul > 1) notes.push(`加成 ×${reward.mul.toFixed(1)}`);
-    if (reward.halved) notes.push('陣亡減半');
+    if (reward.halved) notes.push(retreat ? '撤退減半' : '陣亡減半');
     this.add.text(cx, 145, `金幣 +${reward.total}（${parts.join(' + ')}${notes.length ? `，${notes.join('，')}` : ''}）　持有 ${coins}`, {
       fontFamily: FONT, fontSize: '19px', color: '#ffd60a',
     }).setOrigin(0.5);
