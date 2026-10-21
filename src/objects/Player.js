@@ -11,7 +11,9 @@ export default class Player {
     this.speed = stats.speed;
     this.hp = this.maxHp;
     this.weapon = weapon;
-    this.ammo = this.weapon.magSize;
+    this.magSize = weapon.magSize; // 戰術卡「擴充彈匣」會加大
+    this.reloadMul = 1;            // 戰術卡「快速換彈」會縮短
+    this.ammo = this.magSize;
     this.reloadUntil = 0; // 0 = 沒有在換彈
     this.lastShot = -Infinity;
     this.stunnedUntil = 0;
@@ -40,7 +42,11 @@ export default class Player {
   // 換彈進度 0～1，沒有在換彈時回傳 null
   reloadProgress(time) {
     if (!this.reloadUntil) return null;
-    return Phaser.Math.Clamp(1 - (this.reloadUntil - time) / this.weapon.reloadMs, 0, 1);
+    return Phaser.Math.Clamp(1 - (this.reloadUntil - time) / this.reloadMs, 0, 1);
+  }
+
+  get reloadMs() {
+    return this.weapon.reloadMs * this.reloadMul;
   }
 
   // blockX：前方最近敵人擋住的位置，玩家不能穿過活著的敵人
@@ -76,7 +82,7 @@ export default class Player {
   updateWeapon(time, wantFire) {
     const w = this.weapon;
     if (this.reloadUntil && time >= this.reloadUntil) {
-      this.ammo = w.magSize;
+      this.ammo = this.magSize;
       this.reloadUntil = 0;
     }
     // 自動補彈途中還有子彈就可以直接開火
@@ -87,13 +93,13 @@ export default class Player {
       this.ammo--;
       this.scene.firePlayerBullet(this.x + 26, this.chestY, w);
       if (this.ammo === 0) this.startReload(time);
-    } else if (!wantFire && !this.reloadUntil && this.ammo < w.magSize && time - this.lastShot > PLAYER.autoReloadIdleMs) {
+    } else if (!wantFire && !this.reloadUntil && this.ammo < this.magSize && time - this.lastShot > PLAYER.autoReloadIdleMs) {
       this.startReload(time);
     }
   }
 
   startReload(time) {
-    this.reloadUntil = time + this.weapon.reloadMs;
+    this.reloadUntil = time + this.reloadMs;
     this.scene.sfx('reload');
   }
 

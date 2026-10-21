@@ -118,6 +118,66 @@ export const COINS = {
   deathMul: 0.5,                        // 陣亡時金幣倍率
 };
 
+// 空投補給箱：走到 atProgress 路程前空投，chance 機率出現；打開後三選一戰術卡（只在這一局有效）
+export const SUPPLY = { atProgress: 0.4, chance: 0.5, cardsShown: 3 };
+
+export const RARITY = {
+  common: { name: '普通', weight: 60, color: 0x8d99ae },
+  rare: { name: '稀有', weight: 30, color: 0x3a86ff },
+  legendary: { name: '傳說', weight: 10, color: 0xffd60a },
+};
+
+export const CARD_CATEGORY = { attack: '攻擊', defense: '防禦', utility: '輔助', risk: '高風險' };
+
+// 戰術卡：id 對應 GameScene 裡的效果判斷；數值集中在 CARD_VALUES
+export const CARDS = [
+  { id: 'double', name: '雙發子彈', rarity: 'legendary', category: 'attack', desc: '每次開火多射一發子彈\n（每發傷害 70%）' },
+  { id: 'fastReload', name: '快速換彈', rarity: 'common', category: 'attack', desc: '換彈時間減半' },
+  { id: 'pierce', name: '穿甲彈', rarity: 'rare', category: 'attack', desc: '子彈可以貫穿一個敵人' },
+  { id: 'crit', name: '致命一擊', rarity: 'rare', category: 'attack', desc: '20% 機率造成 2 倍傷害' },
+  { id: 'bigMag', name: '擴充彈匣', rarity: 'common', category: 'attack', desc: '彈匣容量 +50%' },
+  { id: 'parryWindow', name: '格擋大師', rarity: 'common', category: 'defense', desc: '完美格擋的判定時間\n變成兩倍' },
+  { id: 'lifesteal', name: '吸血盾', rarity: 'rare', category: 'defense', desc: '每擋下一次攻擊\n回復 2 點生命' },
+  { id: 'sturdy', name: '堅固盾牌', rarity: 'common', category: 'defense', desc: '盾牌耐久 +40\n回復速度加倍' },
+  { id: 'noStun', name: '不屈', rarity: 'rare', category: 'defense', desc: '破盾後不會暈眩' },
+  { id: 'reflect', name: '強化反彈', rarity: 'rare', category: 'defense', desc: '完美格擋反彈的傷害加倍' },
+  { id: 'speed', name: '急行軍', rarity: 'common', category: 'utility', desc: '移動速度 +15%' },
+  { id: 'medkitDrop', name: '戰場急救', rarity: 'common', category: 'utility', desc: '擊殺時 25% 機率\n掉落小補血包' },
+  { id: 'coinDrop', name: '戰利品', rarity: 'common', category: 'utility', desc: '擊殺時 30% 機率\n掉落金幣（+5）' },
+  { id: 'fieldMedic', name: '戰地醫療', rarity: 'rare', category: 'utility', desc: '立刻回滿生命\n最大生命 +20' },
+  { id: 'hawkEye', name: '鷹眼', rarity: 'common', category: 'utility', desc: '狙擊紅線鎖定時間變長\n手榴彈飛得更慢' },
+  { id: 'berserk', name: '狂戰士', rarity: 'rare', category: 'risk', desc: '生命低於 30% 時\n造成的傷害加倍' },
+  { id: 'gambler', name: '賭徒', rarity: 'legendary', category: 'risk', desc: '本局金幣 ×2\n但受到的傷害 +25%' },
+  { id: 'glass', name: '玻璃大砲', rarity: 'legendary', category: 'risk', desc: '造成的傷害 +50%\n但最大生命 −30' },
+];
+
+export const CARD_VALUES = {
+  doubleDamageMul: 0.7,
+  doubleOffsetY: 6,
+  reloadMul: 0.5,
+  critChance: 0.2,
+  magMul: 1.5,
+  parryWindowMul: 2,
+  lifesteal: 2,
+  sturdyShield: 40,
+  sturdyRegenMul: 2,
+  reflectMul: 2,
+  speedMul: 1.15,
+  medkitChance: 0.25,
+  medkitAmount: 15,
+  coinChance: 0.3,
+  coinAmount: 5,
+  fieldMedicHp: 20,
+  hawkEyeLockMul: 1.6,
+  hawkEyeGrenadeMul: 1.25,
+  berserkHpRatio: 0.3,
+  berserkMul: 2,
+  gamblerCoinMul: 2,
+  gamblerDamageMul: 1.25,
+  glassDamageMul: 1.5,
+  glassHp: 30,
+};
+
 // 連殺：前一次擊殺後 windowMs 內再殺一個就算連殺，第 N 連殺額外得 coinPer ×（N-1）金幣
 export const STREAK = { windowMs: 2500, coinPer: 1 };
 

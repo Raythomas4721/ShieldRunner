@@ -1,4 +1,4 @@
-import { SNIPER, COLORS } from '../config.js';
+import { SNIPER, COLORS, CARD_VALUES } from '../config.js';
 
 // 狙擊手站在高塔上：紅線追蹤 → 鎖定閃爍 → 開槍 → 休息，循環
 // 可以被打：被打中會中斷瞄準（壓制），血量歸零或高塔被炸就會摔下來
@@ -53,7 +53,8 @@ export default class Sniper {
         this.state = 'lock';
         this.lockX = player.x;
         this.lockY = player.y - 30;
-        this.stateUntil = time + SNIPER.lockMs;
+        // 戰術卡「鷹眼」：鎖定後更久才開槍，比較好閃
+        this.stateUntil = time + SNIPER.lockMs * (this.scene.has('hawkEye') ? CARD_VALUES.hawkEyeLockMul : 1);
         this.scene.sfx('lock');
       }
     } else if (this.state === 'lock') {

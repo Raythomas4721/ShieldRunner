@@ -1,4 +1,4 @@
-import { GAME_W, GAME_H, FONT } from '../config.js';
+import { GAME_W, GAME_H, FONT, CARDS } from '../config.js';
 
 const PROGRESS_W = 300;
 
@@ -15,6 +15,9 @@ export default class HUD {
     this.killText = fixed(scene.add.text(GAME_W - 20, 16, '', style).setOrigin(1, 0));
     this.ammoText = fixed(scene.add.text(GAME_W - 20, 44, '', style).setOrigin(1, 0));
     this.bossText = fixed(scene.add.text(GAME_W / 2, 62, '', { ...style, fontSize: '15px', color: '#ff006e' }).setOrigin(0.5, 0));
+    // 這一局選到的戰術卡
+    this.perkText = fixed(scene.add.text(20, 72, '', { ...style, fontSize: '14px', color: '#ffd60a' }));
+    this.perkCount = 0;
     // 低血量時畫面邊緣閃紅光
     this.danger = scene.add.rectangle(GAME_W / 2, GAME_H / 2, GAME_W - 8, GAME_H - 8)
       .setStrokeStyle(8, 0xe63946).setScrollFactor(0).setDepth(99).setAlpha(0);
@@ -25,6 +28,11 @@ export default class HUD {
     const g = this.g;
     g.clear();
     this.bar(70, 20, 220, 16, player.hp / player.maxHp, 0xe63946);
+    if (game.perks.size !== this.perkCount) {
+      this.perkCount = game.perks.size;
+      const names = CARDS.filter((c) => game.perks.has(c.id)).map((c) => c.name);
+      this.perkText.setText(names.length ? `戰術卡：${names.join('・')}` : '');
+    }
     const low = player.hp > 0 && player.hp / player.maxHp < 0.3;
     this.danger.setAlpha(low ? 0.35 + 0.35 * Math.sin(time / 150) : 0);
     const shield = player.shield;
@@ -48,8 +56,8 @@ export default class HUD {
     const reload = player.reloadProgress(time);
     const w = player.weapon;
     if (reload === null) {
-      const low = player.ammo <= Math.ceil(w.magSize / 4);
-      this.ammoText.setText(`${w.name} ${player.ammo} / ${w.magSize}`).setColor(low ? '#ffd60a' : '#ffffff');
+      const low = player.ammo <= Math.ceil(player.magSize / 4);
+      this.ammoText.setText(`${w.name} ${player.ammo} / ${player.magSize}`).setColor(low ? '#ffd60a' : '#ffffff');
     } else {
       this.ammoText.setText(`${w.name} 換彈中…`).setColor('#ffd60a');
       this.bar(GAME_W - 120, 70, 100, 5, reload, 0xffd60a);

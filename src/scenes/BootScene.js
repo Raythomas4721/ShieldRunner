@@ -132,6 +132,24 @@ export default class BootScene extends Phaser.Scene {
     g.lineBetween(3, 3, 37, 37).lineBetween(37, 3, 3, 37);
     make('crate', 40, 40);
 
+    // 補給箱：軍綠色木箱加白色綁帶
+    g.fillStyle(0x52796f).fillRoundedRect(0, 0, 38, 30, 3);
+    g.fillStyle(0xcad2c5).fillRect(16, 0, 6, 30).fillRect(0, 12, 38, 6);
+    g.lineStyle(2, 0x2f3e46).strokeRoundedRect(1, 1, 36, 28, 3);
+    make('supply', 38, 30);
+
+    // 降落傘：半圓傘面加傘繩
+    g.fillStyle(0xe9edc9).slice(40, 26, 38, Math.PI, 0, false).fillPath();
+    g.fillStyle(0xe76f51).slice(40, 26, 38, Math.PI * 1.33, Math.PI * 1.66, false).fillPath();
+    g.lineStyle(1, 0xadb5bd).lineBetween(3, 26, 40, 60).lineBetween(77, 26, 40, 60).lineBetween(40, 26, 40, 60);
+    make('parachute', 80, 60);
+
+    // 金幣
+    g.fillStyle(0xffd60a).fillCircle(8, 8, 8);
+    g.fillStyle(0xe9c46a).fillCircle(8, 8, 5);
+    g.fillStyle(0xfff3b0).fillRect(6, 4, 2, 7);
+    make('coin', 16, 16);
+
     // 補血包：白底紅十字
     g.fillStyle(0xf1faee).fillRoundedRect(0, 0, 26, 22, 4);
     g.fillStyle(0xe63946).fillRect(10, 3, 6, 16).fillRect(5, 8, 16, 6);

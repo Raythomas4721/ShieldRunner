@@ -1,6 +1,7 @@
 import {
   GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
   COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS, DIFFICULTY, STREAK, STARS,
+  SUPPLY, RARITY, CARDS, CARD_VALUES as CV,
   missionConfig, raidPoints, difficultyAt, playerStats, parTime,
 } from '../config.js';
 import Terrain from '../systems/Terrain.js';
@@ -60,6 +61,7 @@ export default class GameScene extends Phaser.Scene {
     this.streak = 0;
     this.bestStreak = 0;
     this.lastKillAt = -Infinity;
+    this.perks = new Set();       // 這一局選到的戰術卡 id
     this.over = false;
 
     // 碰撞登記順序 = 判定順序：掩體 → 盾牌 → 身體，同一幀內子彈會先被前面的擋下
@@ -84,6 +86,7 @@ export default class GameScene extends Phaser.Scene {
     // 第一次玩任務 1 才有新手教學（設定裡可以重看）
     this.tutorial = this.missionNo === 1 && !this.save.tutorialDone ? new Tutorial(this, this.controls) : null;
     this.banner(`任務 ${this.mission.number}：前進 ${this.mission.length} 公尺，抵達撤離點`, '#ffffff', 2500);
+    this.setupSupply();
 
     // 物理更新後再移動鏡頭，避免畫面延遲一幀
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncCamera, this);
@@ -139,6 +142,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.airRaid.update(time);
 
+    this.updateSupply();
     this.checkPickups();
     this.cleanup();
     this.hud.update(this, time);
@@ -217,11 +221,109 @@ export default class GameScene extends Phaser.Scene {
     this.snipers.push(new Sniper(this, this.enemyGroup, x));
   }
 
-  spawnHealthPack(x) {
+  // 地上的可撿物品：補血包（受傷時才撿）、金幣（戰術卡「戰利品」掉落）
+  spawnPickup(x, type, amount, scale = 1) {
     const y = this.groundAt(x);
-    const kit = this.add.image(x, y - 4, 'medkit').setOrigin(0.5, 1).setDepth(3);
-    this.tweens.add({ targets: kit, y: y - 12, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.pickups.push(kit);
+    const item = this.add.image(x, y - 4, type === 'coin' ? 'coin' : 'medkit').setOrigin(0.5, 1).setDepth(3).setScale(scale);
+    item.setData({ type, amount });
+    this.tweens.add({ targets: item, y: y - 12, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.pickups.push(item);
+  }
+
+  spawnHealthPack(x) {
+    this.spawnPickup(x, 'medkit', HEALTH_PACK.amount);
+  }
+
+  // ---------- 空投補給與戰術卡 ----------
+
+  has(cardId) {
+    return this.perks.has(cardId);
+  }
+
+  // 一半機率在 40% 路程前空投補給箱
+  setupSupply() {
+    this.supply = Math.random() < SUPPLY.chance
+      ? { x: this.startX + this.mission.length * PX_PER_METER * SUPPLY.atProgress, state: 'waiting' }
+      : null;
+  }
+
+  updateSupply() {
+    const s = this.supply;
+    if (!s) return;
+    // 玩家接近時開始空投，落點在畫面右側，走過去就能看到它落地
+    if (s.state === 'waiting' && this.player.x >= s.x - 520) this.dropSupply();
+    // 走到箱子旁邊就打開（落地前已經走過頭也算）
+    if (s.state === 'landed' && this.player.x > s.x - 34) this.openSupply();
+  }
+
+  dropSupply() {
+    const s = this.supply;
+    s.state = 'falling';
+    const groundY = this.groundAt(s.x);
+    s.crate = this.add.image(s.x, -10, 'supply').setOrigin(0.5, 1).setDepth(6);
+    s.chute = this.add.image(s.x, -40, 'parachute').setOrigin(0.5, 1).setDepth(6);
+    this.tweens.add({ targets: s.crate, y: groundY, duration: 2200, ease: 'Sine.easeIn' });
+    this.tweens.add({
+      targets: s.chute, y: groundY - 30, duration: 2200, ease: 'Sine.easeIn',
+      onComplete: () => {
+        this.tweens.add({ targets: s.chute, alpha: 0, x: s.x + 40, duration: 500, onComplete: () => s.chute.destroy() });
+        s.glow = this.add.circle(s.x, groundY - 15, 30, 0xffd60a, 0.25).setDepth(5);
+        this.tweens.add({ targets: s.glow, scale: 1.6, alpha: 0, duration: 900, repeat: -1 });
+        s.state = 'landed';
+      },
+    });
+    this.sfx('supply');
+    this.queueTip('補給空投！走過去打開，選一張戰術卡', '#4cc9f0', 3000);
+  }
+
+  openSupply() {
+    const s = this.supply;
+    s.state = 'opened';
+    this.tweens.killTweensOf(s.glow);
+    s.glow.destroy();
+    this.tweens.add({ targets: s.crate, alpha: 0, scale: 1.4, duration: 250, onComplete: () => s.crate.destroy() });
+    this.sfx('pickup');
+    this.scene.launch('Cards', { cards: this.drawCards(SUPPLY.cardsShown) });
+    this.scene.pause();
+  }
+
+  // 依稀有度權重抽卡，不重複
+  drawCards(count) {
+    const pool = CARDS.filter((c) => !this.has(c.id));
+    const picked = [];
+    while (picked.length < count && pool.length) {
+      const rarities = [...new Set(pool.map((c) => c.rarity))];
+      const total = rarities.reduce((sum, r) => sum + RARITY[r].weight, 0);
+      let roll = Math.random() * total;
+      const rarity = rarities.find((r) => (roll -= RARITY[r].weight) < 0) || rarities[0];
+      const options = pool.filter((c) => c.rarity === rarity);
+      const card = Phaser.Utils.Array.GetRandom(options);
+      picked.push(card);
+      pool.splice(pool.indexOf(card), 1);
+    }
+    return picked;
+  }
+
+  // 套用戰術卡：一次性的效果在這裡處理，持續效果在各處用 has() 判斷
+  applyCard(card) {
+    this.perks.add(card.id);
+    const p = this.player;
+    const shield = p.shield;
+    switch (card.id) {
+      case 'fastReload': p.reloadMul = CV.reloadMul; break;
+      case 'bigMag': p.magSize = Math.round(p.weapon.magSize * CV.magMul); p.ammo = p.magSize; break;
+      case 'parryWindow': shield.parryWindowMs *= CV.parryWindowMul; break;
+      case 'sturdy':
+        shield.max += CV.sturdyShield;
+        shield.durability += CV.sturdyShield;
+        shield.regenMul = CV.sturdyRegenMul;
+        break;
+      case 'speed': p.speed *= CV.speedMul; break;
+      case 'fieldMedic': p.maxHp += CV.fieldMedicHp; p.hp = p.maxHp; break;
+      case 'glass': p.maxHp -= CV.glassHp; p.hp = Math.min(p.hp, p.maxHp); break;
+      default: break;
+    }
+    this.floatText(p.x, p.y - 100, card.name, Phaser.Display.Color.IntegerToColor(RARITY[card.rarity].color).rgba);
   }
 
   // ---------- 子彈 ----------
@@ -239,20 +341,33 @@ export default class GameScene extends Phaser.Scene {
     return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -0.9, 0.9);
   }
 
-  // 霰彈槍一次射出多發，呈上下扇形散開
+  // 開火：戰術卡「雙發子彈」會上下各射一發（每發傷害打折）
   firePlayerBullet(x, y, weapon) {
     this.sfx(weapon.sound);
     this.muzzleFlash(x, y, 0xffd60a);
+    if (this.has('double')) {
+      this.spawnPlayerShot(x, y - CV.doubleOffsetY, weapon, CV.doubleDamageMul);
+      this.spawnPlayerShot(x, y + CV.doubleOffsetY, weapon, CV.doubleDamageMul);
+    } else {
+      this.spawnPlayerShot(x, y, weapon, 1);
+    }
+  }
+
+  // 霰彈槍一次射出多發，呈上下扇形散開
+  spawnPlayerShot(x, y, weapon, damageMul) {
     const base = this.aimAngle(x, y, weapon);
     const count = weapon.pellets || 1;
+    // 可貫穿幾個敵人：狙擊槍無限、戰術卡「穿甲彈」一個
+    const pierceLeft = weapon.pierce ? Infinity : this.has('pierce') ? 1 : 0;
     for (let i = 0; i < count; i++) {
       const angle = base + (count > 1 ? Phaser.Math.DegToRad(weapon.spread * (i / (count - 1) - 0.5)) : 0);
       const b = this.playerBullets.create(x, y, weapon.texture || 'pbullet').setRotation(angle);
       b.setData({
-        damage: weapon.damage,
+        damage: weapon.damage * damageMul,
         originX: x,
         maxX: x + weapon.range,
-        pierce: !!weapon.pierce,
+        pierceLeft,
+        armorPierce: !!weapon.pierce, // 能打穿盾兵的盾（只有狙擊槍）
         explosive: weapon.explosive || null,
         hitRefs: new Set(), // 貫穿彈已經打過的目標，避免同一個目標每幀重複受傷
       });
@@ -280,7 +395,7 @@ export default class GameScene extends Phaser.Scene {
   // 擲彈兵丟手榴彈：拋物線飛向玩家（稍微預判移動），落點先畫紅圈
   throwGrenade(enemy) {
     const d = enemy.def;
-    const T = d.flightMs / 1000;
+    const T = (d.flightMs / 1000) * (this.has('hawkEye') ? CV.hawkEyeGrenadeMul : 1);
     const p = this.player;
     const tx = p.x + p.sprite.body.velocity.x * T * 0.6;
     const ty = this.groundAt(tx);
@@ -376,7 +491,7 @@ export default class GameScene extends Phaser.Scene {
         const back = this.add.graphics().setDepth(9);
         back.lineStyle(3, 0x4cc9f0, 1).lineBetween(p.x + 26, p.y - 30, sniper.x, sniper.chestY);
         this.tweens.add({ targets: back, alpha: 0, duration: 250, onComplete: () => back.destroy() });
-        if (sniper.hit(PARRY.sniperDamage)) this.onKill(sniper);
+        if (sniper.hit(PARRY.sniperDamage * this.reflectMul())) this.onKill(sniper);
         return;
       }
       this.blockWithShield(SNIPER.shieldCost, p.x + 26, p.y - 30);
@@ -404,7 +519,7 @@ export default class GameScene extends Phaser.Scene {
     cover.hit(damage);
   }
 
-  // 貫穿彈對每個敵人只算一次傷害，回傳這次是否為第一次打到
+  // 每顆子彈對每個敵人只算一次傷害，回傳這次是否為第一次打到
   firstHit(bullet, target) {
     const refs = bullet.getData('hitRefs');
     if (refs.has(target)) return false;
@@ -428,20 +543,25 @@ export default class GameScene extends Phaser.Scene {
   parry(bullet) {
     const { x, y } = bullet;
     const { x: vx, y: vy } = bullet.body.velocity;
-    const damage = Math.max(PARRY.minReflectDamage, bullet.getData('damage') * PARRY.reflectDamageMul);
+    const damage = Math.max(PARRY.minReflectDamage, bullet.getData('damage') * PARRY.reflectDamageMul) * this.reflectMul();
     const texture = bullet.texture.key;
     bullet.destroy();
     this.parryEffect(x, y);
     if (texture === 'abullet') return;
 
     const b = this.playerBullets.create(x + 8, y, texture === 'heavy' ? 'heavy' : 'pbullet').setTint(0x4cc9f0);
-    b.setData({ damage, originX: x, maxX: x + 900, pierce: false, explosive: null, hitRefs: new Set() });
+    b.setData({ damage, originX: x, maxX: x + 900, pierceLeft: 0, armorPierce: false, explosive: null, hitRefs: new Set() });
     b.setVelocity(-vx * 1.5, -vy * 1.5);
     b.setRotation(Math.atan2(-vy, -vx));
   }
 
+  reflectMul() {
+    return this.has('reflect') ? CV.reflectMul : 1;
+  }
+
   parryEffect(x, y) {
     this.counters.parries++;
+    this.lifesteal();
     this.sfx('parry');
     vibrate(20);
     const ring = this.add.circle(x, y, 10).setStrokeStyle(3, 0x4cc9f0).setDepth(20);
@@ -449,11 +569,19 @@ export default class GameScene extends Phaser.Scene {
     this.floatText(this.player.x, this.player.y - 90, '完美格擋！', '#4cc9f0');
   }
 
+  // 戰術卡「吸血盾」：每次擋下攻擊回血
+  lifesteal() {
+    if (!this.has('lifesteal') || this.player.hp >= this.player.maxHp) return;
+    this.player.heal(CV.lifesteal);
+    this.damageNumber(this.player.x - 20, this.player.y - 70, `+${CV.lifesteal}`, '#2dc653');
+  }
+
   blockWithShield(cost, x, y) {
     this.counters.blocks++;
+    this.lifesteal();
     this.spark(x, y, 0x4cc9f0);
     if (this.player.shield.absorb(cost)) {
-      this.player.stun(this.time.now);
+      if (!this.has('noStun')) this.player.stun(this.time.now);
       this.cameras.main.shake(200, 0.01);
       this.floatText(this.player.x, this.player.y - 90, '破盾！', '#ffd60a');
       this.sfx('shieldBreak');
@@ -470,10 +598,11 @@ export default class GameScene extends Phaser.Scene {
     this.damagePlayer(damage);
   }
 
-  // 所有玩家受到的傷害都經過這裡，套用難度倍率
+  // 所有玩家受到的傷害都經過這裡，套用難度倍率與戰術卡「賭徒」
   damagePlayer(rawAmount) {
     if (this.over) return;
-    const amount = Math.max(1, Math.round(rawAmount * this.mode.damageMul));
+    const gambler = this.has('gambler') ? CV.gamblerDamageMul : 1;
+    const amount = Math.max(1, Math.round(rawAmount * this.mode.damageMul * gambler));
     this.cameras.main.shake(100, 0.006);
     this.sfx('hurt');
     vibrate(40);
@@ -489,17 +618,20 @@ export default class GameScene extends Phaser.Scene {
       this.explode(bullet);
       return;
     }
-    const pierce = bullet.getData('pierce');
-    // 盾兵舉著盾：一般子彈被彈開，只有貫穿彈打得穿
-    if (enemy.guarding && !pierce) {
+    // 盾兵舉著盾：一般子彈被彈開，只有狙擊槍打得穿
+    if (enemy.guarding && !bullet.getData('armorPierce')) {
       this.spark(bullet.x, bullet.y, 0xdee2e6);
       this.sfx('ting');
       bullet.destroy();
       return;
     }
+    // 同一顆子彈對同一個敵人只算一次（貫穿彈穿過時會連續好幾幀重疊）
+    if (!this.firstHit(bullet, enemy)) return;
     const damage = bullet.getData('damage');
-    if (pierce) {
-      if (!this.firstHit(bullet, enemy)) return;
+    const pierceLeft = bullet.getData('pierceLeft');
+    if (pierceLeft > 0) {
+      // 貫穿彈：打中後繼續飛，可貫穿的數量減一
+      bullet.setData('pierceLeft', pierceLeft - 1);
     } else {
       bullet.destroy();
     }
@@ -507,8 +639,19 @@ export default class GameScene extends Phaser.Scene {
     this.damageEnemy(enemy, damage);
   }
 
-  damageEnemy(enemy, damage) {
-    this.damageNumber(enemy.x, enemy.chestY - 30, damage, '#ffd60a');
+  // 玩家造成的傷害倍率：戰術卡「玻璃大砲」、「狂戰士」
+  damageMul() {
+    let mul = 1;
+    if (this.has('glass')) mul *= CV.glassDamageMul;
+    if (this.has('berserk') && this.player.hp < this.player.maxHp * CV.berserkHpRatio) mul *= CV.berserkMul;
+    return mul;
+  }
+
+  // 玩家打到敵人都經過這裡：套用傷害倍率與暴擊
+  damageEnemy(enemy, baseDamage) {
+    const crit = this.has('crit') && Math.random() < CV.critChance;
+    const damage = baseDamage * this.damageMul() * (crit ? 2 : 1);
+    this.damageNumber(enemy.x, enemy.chestY - 30, crit ? `暴擊 ${Math.round(damage)}` : damage, crit ? '#ff4d6d' : '#ffd60a');
     if (!enemy.hit(damage)) {
       this.sfx('enemyHit');
       return;
@@ -523,6 +666,9 @@ export default class GameScene extends Phaser.Scene {
     this.killCoins += enemy.def.coins;
     this.enemies = this.enemies.filter((e) => e !== enemy);
     this.countStreak();
+    // 戰術卡掉落物：掉在敵人腳下（狙擊手掉在塔下）
+    if (this.has('medkitDrop') && Math.random() < CV.medkitChance) this.spawnPickup(enemy.x, 'medkit', CV.medkitAmount, 0.75);
+    if (this.has('coinDrop') && Math.random() < CV.coinChance) this.spawnPickup(enemy.x + 12, 'coin', CV.coinAmount);
     if (enemy.def.boss) {
       // Boss 倒下：連續爆炸
       this.sfx('explosion');
@@ -576,14 +722,21 @@ export default class GameScene extends Phaser.Scene {
 
   checkPickups() {
     const p = this.player;
-    if (p.hp >= p.maxHp) return; // 滿血時不撿，留著待會用
-    this.pickups = this.pickups.filter((kit) => {
-      if (Math.abs(kit.x - p.x) > 26) return true;
-      p.heal(HEALTH_PACK.amount);
-      this.floatText(p.x, p.y - 90, `+${HEALTH_PACK.amount}`, '#2dc653');
-      this.sfx('pickup');
-      this.tweens.killTweensOf(kit);
-      kit.destroy();
+    this.pickups = this.pickups.filter((item) => {
+      if (Math.abs(item.x - p.x) > 26) return true;
+      const { type, amount } = item.data.values;
+      if (type === 'medkit') {
+        if (p.hp >= p.maxHp) return true; // 滿血時不撿，留著待會用
+        p.heal(amount);
+        this.floatText(p.x, p.y - 90, `+${amount}`, '#2dc653');
+        this.sfx('pickup');
+      } else {
+        this.killCoins += amount;
+        this.floatText(p.x, p.y - 90, `+${amount} 金幣`, '#ffd60a');
+        this.sfx('coin');
+      }
+      this.tweens.killTweensOf(item);
+      item.destroy();
       return false;
     });
   }
@@ -654,7 +807,8 @@ export default class GameScene extends Phaser.Scene {
 
   // 傷害數字：小字往上飄，位置稍微錯開避免連射時疊在一起
   damageNumber(x, y, amount, color) {
-    const t = this.add.text(x + Phaser.Math.Between(-10, 10), y, `${Math.round(amount)}`, {
+    const label = typeof amount === 'number' ? `${Math.round(amount)}` : amount;
+    const t = this.add.text(x + Phaser.Math.Between(-10, 10), y, label, {
       fontFamily: FONT, fontSize: '18px', color, fontStyle: 'bold', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(30);
     this.tweens.add({ targets: t, y: y - 26, alpha: 0, duration: 450, onComplete: () => t.destroy() });
@@ -687,7 +841,8 @@ export default class GameScene extends Phaser.Scene {
     const distance = Math.floor(this.meters / COINS.perMeters);
     const bonus = victory ? COINS.missionBonus(this.missionNo) : 0;
     const subtotal = distance + this.killCoins + bonus;
-    const mul = this.stats.coinMul * this.mode.coinMul; // 升級加成 × 難度倍率
+    const gambler = this.has('gambler') ? CV.gamblerCoinMul : 1;
+    const mul = this.stats.coinMul * this.mode.coinMul * gambler; // 升級加成 × 難度倍率 × 賭徒
     const total = Math.round(subtotal * mul * (victory ? 1 : COINS.deathMul));
     return { distance, kills: this.killCoins, bonus, mul, halved: !victory, total };
   }

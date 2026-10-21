@@ -15,6 +15,8 @@ export default class Shield {
     this.mode = null;
     this.loweredAt = -Infinity; // 上次放下盾的時間
     this.parryUntil = 0;        // 完美格擋判定的截止時間
+    this.parryWindowMs = PARRY.windowMs; // 戰術卡「格擋大師」會加長
+    this.regenMul = 1;                   // 戰術卡「堅固盾牌」會加快回復
   }
 
   get raised() {
@@ -34,10 +36,10 @@ export default class Shield {
     if (this.mode !== prev) {
       if (prev && !this.mode) this.loweredAt = time;
       // 從放下狀態舉起、而且放下夠久，才有完美格擋判定（避免一直連按）
-      if (this.mode) this.parryUntil = !prev && time - this.loweredAt >= PARRY.minDownMs ? time + PARRY.windowMs : 0;
+      if (this.mode) this.parryUntil = !prev && time - this.loweredAt >= PARRY.minDownMs ? time + this.parryWindowMs : 0;
     }
     if (!this.mode) {
-      this.durability = Math.min(this.max, this.durability + SHIELD.regenPerSec * delta / 1000);
+      this.durability = Math.min(this.max, this.durability + SHIELD.regenPerSec * this.regenMul * delta / 1000);
     }
     this.front.setPosition(playerX + 26, playerY - 2);
     this.air.setPosition(playerX + 2, playerY - 60);

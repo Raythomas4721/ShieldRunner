@@ -114,6 +114,8 @@ const SOUNDS = {
 
   // 系統
   streak: (t) => { tone(t, { freq: 880, to: 1320, dur: 0.12, type: 'triangle', vol: 0.1 }); tone(t, { freq: 1760, dur: 0.1, type: 'sine', vol: 0.06, at: 0.08 }); },
+  supply: (t) => [660, 880, 1320].forEach((f, i) => tone(t, { freq: f, dur: 0.18, type: 'sine', vol: 0.1, at: i * 0.12 })),
+  coin: (t) => { tone(t, { freq: 1300, dur: 0.06, type: 'square', vol: 0.05 }); tone(t, { freq: 1900, dur: 0.12, type: 'square', vol: 0.05, at: 0.06 }); },
   pickup: (t) => { tone(t, { freq: 660, dur: 0.1, type: 'sine', vol: 0.12 }); tone(t, { freq: 990, dur: 0.15, type: 'sine', vol: 0.12, at: 0.08 }); },
   click: (t) => tone(t, { freq: 1000, dur: 0.03, type: 'sine', vol: 0.08 }),
   victory: (t) => [523, 659, 784, 1047].forEach((f, i) => tone(t, { freq: f, dur: 0.22, type: 'triangle', vol: 0.12, at: i * 0.12 })),
