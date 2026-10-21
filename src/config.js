@@ -202,10 +202,10 @@ export const ENEMIES = {
   grenadier: {
     name: '擲彈兵', texture: 'grenadier', ai: 'grenadier',
     hp: 90, coins: 9,
-    fireRange: 620, firstShotDelay: [700, 1200], fireInterval: [2600, 3400], aimMs: 500,
+    fireRange: 620, firstShotDelay: [900, 1500], fireInterval: [3400, 4400], aimMs: 750,
     burst: 1,
-    flightMs: 1100,    // 手榴彈飛行時間（落點會稍微預判玩家移動）
-    gravity: 900,
+    flightMs: 1600,    // 手榴彈飛行時間（越長飛得越慢、越好閃；落點會稍微預判玩家移動）
+    gravity: 520,      // 重力小一點，拋物線比較緩
     blastRadius: 55,
     damage: 22,        // 落地爆炸傷害，正面盾擋不住
     shieldCost: 15,    // 用對空盾在空中擋下的耗盾
