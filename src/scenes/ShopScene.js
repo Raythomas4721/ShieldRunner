@@ -91,7 +91,7 @@ export default class ShopScene extends Phaser.Scene {
     }
     const price = upgradePrice(key, level);
     const affordable = this.save.coins >= price;
-    makeButton(this, bx, by, 110, 44, `升級 ${price}`, 0x7b2cbf, () => {
+    makeButton(this, bx, by, 110, 44, `${level === 0 && u.prices ? '購買' : '升級'} ${price}`, 0x7b2cbf, () => {
       if (!affordable) {
         toast(this, GAME_W / 2, 455, `金幣不足，還差 ${price - this.save.coins}`, '#e63946');
         return;

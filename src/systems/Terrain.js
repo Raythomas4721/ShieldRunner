@@ -1,9 +1,10 @@
-import { GAME_H, GROUND_Y, TERRAIN, COLORS } from '../config.js';
+import { GAME_H, GROUND_Y, TERRAIN } from '../config.js';
 
 // 地形高度線：一串 (x, y) 折線點，平地與坡道交錯，玩家往前走時再往後補
 export default class Terrain {
-  constructor(scene, startX, evacX) {
+  constructor(scene, startX, evacX, colors) {
     this.evacX = evacX;
+    this.colors = colors; // 戰區的地面配色 { fill, top, layer }
     this.points = [
       { x: -2000, y: GROUND_Y },
       { x: startX + TERRAIN.flatStart, y: GROUND_Y },
@@ -80,11 +81,12 @@ export default class Terrain {
     }
     top.push({ x: right, y: this.heightAt(right) });
 
+    const c = this.colors;
     g.clear();
-    g.fillStyle(COLORS.ground).fillPoints([...top, { x: right, y: GAME_H }, { x: left, y: GAME_H }], true);
+    g.fillStyle(c.fill).fillPoints([...top, { x: right, y: GAME_H }, { x: left, y: GAME_H }], true);
     // 地層紋路：沿著地表往下偏移的兩條線
-    g.lineStyle(10, COLORS.groundLayer, 0.8).strokePoints(top.map((p) => ({ x: p.x, y: p.y + 26 })));
-    g.lineStyle(6, COLORS.groundLayer, 0.5).strokePoints(top.map((p) => ({ x: p.x, y: p.y + 60 })));
-    g.lineStyle(5, COLORS.groundTop).strokePoints(top);
+    g.lineStyle(10, c.layer, 0.8).strokePoints(top.map((p) => ({ x: p.x, y: p.y + 26 })));
+    g.lineStyle(6, c.layer, 0.5).strokePoints(top.map((p) => ({ x: p.x, y: p.y + 60 })));
+    g.lineStyle(5, c.top).strokePoints(top);
   }
 }

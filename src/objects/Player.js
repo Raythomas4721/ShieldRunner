@@ -19,6 +19,7 @@ export default class Player {
     this.stunnedUntil = 0;
     this.flashing = false;
     this.dead = false;
+    this.slideDecel = 0;  // 雪地結冰時 > 0：放開前進後滑行減速
   }
 
   get x() {
@@ -70,6 +71,9 @@ export default class Player {
     const slope = terrain.slopeAt(this.x);
     if (slope < -0.05) vx *= TERRAIN.uphillSpeedMul;
     else if (slope > 0.05) vx *= TERRAIN.downhillSpeedMul;
+    // 雪地結冰：減速時不會馬上停，以 slideDecel 慢慢滑停（被敵人擋住時仍立刻停下）
+    const current = this.sprite.body.velocity.x;
+    if (this.slideDecel && vx < current) vx = Math.max(vx, current - (this.slideDecel * delta) / 1000);
     if (blockX !== null && this.x >= blockX) vx = 0;
     this.sprite.setVelocityX(vx);
 

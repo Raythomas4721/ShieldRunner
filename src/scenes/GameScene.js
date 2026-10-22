@@ -1,7 +1,7 @@
 import {
   GAME_W, PX_PER_METER, PLAYER_SCREEN_X, FONT, COLORS,
   COVER_SHOOT_OVER, SNIPER, PARRY, AIR_RAID, HEALTH_PACK, WEAPONS, COINS, DIFFICULTY, STREAK, STARS,
-  SUPPLY, RARITY, CARDS, CARD_VALUES as CV,
+  SUPPLY, RARITY, CARDS, CARD_VALUES as CV, THEATER_FX, GROUND_Y, OBJECTIVES,
   missionConfig, raidPoints, difficultyAt, playerStats, parTime,
 } from '../config.js';
 import Terrain from '../systems/Terrain.js';
@@ -12,6 +12,7 @@ import Player from '../objects/Player.js';
 import Enemy from '../objects/Enemy.js';
 import Cover from '../objects/Cover.js';
 import Sniper from '../objects/Sniper.js';
+import Buddy from '../objects/Buddy.js';
 import Spawner from '../systems/Spawner.js';
 import AirRaid from '../systems/AirRaid.js';
 import TouchControls from '../systems/TouchControls.js';
@@ -36,12 +37,20 @@ export default class GameScene extends Phaser.Scene {
 
     this.startX = PLAYER_SCREEN_X;
     this.evacX = this.startX + this.mission.length * PX_PER_METER;
-    this.background = new Background(this);
-    this.terrain = new Terrain(this, this.startX, this.evacX);
+    this.theater = this.mission.theater;
+    this.objective = this.mission.objective;
+    this.trucksTotal = this.objective === 'destroy' ? OBJECTIVES.destroy.truckAt.length : 0;
+    this.trucksDestroyed = 0;
+    this.hold = null; // 守點任務：抵達無線電站後的倒數狀態
+    this.timeLimit = this.objective === 'timed' ? Math.round(parTime(this.mission.length) * OBJECTIVES.timed.timeMul) : null;
+    this.background = new Background(this, this.theater);
+    this.terrain = new Terrain(this, this.startX, this.evacX, this.theater.ground);
     this.createEvac();
 
     this.stats = playerStats(this.save.upgrades);
     this.player = new Player(this, this.startX, this.stats, WEAPONS[this.save.equipped] || WEAPONS.pistol);
+    if (this.theater.feature === 'ice') this.player.slideDecel = THEATER_FX.ice.slideDecel;
+    this.buddy = this.stats.buddy ? new Buddy(this, this.player, this.stats.buddy) : null;
     this.enemies = [];
     this.boss = null;
     this.tipBusyUntil = 0;
@@ -85,8 +94,10 @@ export default class GameScene extends Phaser.Scene {
     this.createPauseButton();
     // 第一次玩任務 1 才有新手教學（設定裡可以重看）
     this.tutorial = this.missionNo === 1 && !this.save.tutorialDone ? new Tutorial(this, this.controls) : null;
-    this.banner(`任務 ${this.mission.number}：前進 ${this.mission.length} 公尺，抵達撤離點`, '#ffffff', 2500);
+    this.banner(`任務 ${this.mission.number}｜${this.theater.name}\n${this.objectiveBrief()}`, '#ffffff', 2500);
+    this.tipBusyUntil = this.time.now + 2900; // 開場說明有兩行，提示等它消失再出現
     this.setupSupply();
+    this.setupWeather();
 
     // 物理更新後再移動鏡頭，避免畫面延遲一幀
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.syncCamera, this);
@@ -122,18 +133,23 @@ export default class GameScene extends Phaser.Scene {
     if (this.over) return;
 
     const input = this.controls.read();
-    let blockX = null;
+    // 守點任務：走到無線電站就停住，不能再往前
+    let blockX = this.objective === 'defend' ? this.evacX : null;
     for (const e of this.enemies) {
+      if (e.def.flying) continue; // 無人機在空中，不擋路
       if (e.alive && e.x > this.player.x && (blockX === null || e.x - 70 < blockX)) blockX = e.x - 70;
     }
     this.player.update(time, delta, input, blockX);
+    if (this.buddy) this.buddy.update(time);
 
     this.elapsed += delta;
     this.meters = Phaser.Math.Clamp(Math.floor((this.player.x - this.startX) / PX_PER_METER), 0, this.mission.length);
     const progress = this.meters / this.mission.length;
     const difficulty = difficultyAt(this.mission, progress) * this.mode.fireMul;
     this.spawner.update(this.player.x, difficulty);
-    for (const e of this.enemies) e.update(time, this.player.x, difficulty);
+    this.updateWeather();
+    const enemyPace = difficulty * (this.storm && this.storm.active ? THEATER_FX.sandstorm.fireMul : 1);
+    for (const e of this.enemies) e.update(time, this.player.x, enemyPace);
     for (const s of this.snipers) s.update(time, this.player);
 
     if (!this.airRaid.active && this.raidIndex < this.raidPoints.length && progress >= this.raidPoints[this.raidIndex]) {
@@ -148,7 +164,94 @@ export default class GameScene extends Phaser.Scene {
     this.hud.update(this, time);
     if (this.tutorial) this.tutorial.update(time);
 
-    if (this.player.x >= this.evacX) this.finish(true);
+    this.updateObjective(time);
+  }
+
+  // ---------- 任務目標 ----------
+
+  // 開場說明的第二行
+  objectiveBrief() {
+    const len = this.mission.length;
+    switch (this.objective) {
+      case 'defend': return `前進 ${len} 公尺到無線電站，守住 ${OBJECTIVES.defend.holdMs / 1000} 秒`;
+      case 'destroy': return `摧毀路上 ${this.trucksTotal} 台敵方補給車，再抵達撤離點`;
+      case 'timed': return `${this.timeLimit} 秒內抵達 ${len} 公尺外的撤離點！直升機不等人`;
+      default: return `前進 ${len} 公尺，抵達撤離點`;
+    }
+  }
+
+  updateObjective(time) {
+    if (this.objective === 'timed' && this.elapsed >= this.timeLimit * 1000) {
+      this.finish(false, false, 'timeout');
+      return;
+    }
+    if (this.objective !== 'defend') {
+      if (this.player.x >= this.evacX) this.finish(true);
+      return;
+    }
+    if (!this.hold) {
+      if (this.player.x >= this.evacX - 4) this.startHold();
+      return;
+    }
+    const h = this.hold;
+    const d = OBJECTIVES.defend;
+    if (this.elapsed >= h.nextWave) {
+      h.nextWave = this.elapsed + Phaser.Math.Between(...d.waveEvery);
+      this.spawnReinforcement();
+    }
+    if (!h.raided && this.elapsed >= h.startAt + d.holdMs * d.raidAt && !this.airRaid.active) {
+      h.raided = true;
+      this.airRaid.start(time);
+    }
+    if (this.elapsed >= h.endAt) this.finish(true);
+  }
+
+  // 抵達無線電站：開始守點倒數，敵人從右邊一波波過來
+  startHold() {
+    const d = OBJECTIVES.defend;
+    this.hold = { startAt: this.elapsed, endAt: this.elapsed + d.holdMs, nextWave: this.elapsed + 800, raided: false };
+    this.sfx('siren');
+    this.queueTip(`守住無線電站 ${d.holdMs / 1000} 秒！敵人會從右邊增援`, '#4cc9f0', 2500);
+  }
+
+  // 守點增援：在畫面右側外生成，走進來到定位才開火（停在霰彈槍也打得到的距離）
+  spawnReinforcement() {
+    const x = this.cameras.main.scrollX + GAME_W + 60;
+    this.spawnEnemy(x, this.spawner.pickType());
+    const enemy = this.enemies[this.enemies.length - 1];
+    enemy.walkTo = this.player.x + Phaser.Math.Between(...OBJECTIVES.defend.standAt);
+  }
+
+  // HUD 上顯示的目標狀態
+  objectiveStatus() {
+    switch (this.objective) {
+      case 'destroy':
+        return { text: `補給車 ${this.trucksDestroyed} / ${this.trucksTotal}`, color: '#ffd60a' };
+      case 'timed': {
+        const left = Math.max(0, Math.ceil(this.timeLimit - this.elapsed / 1000));
+        const label = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+        return { text: `撤離倒數 ${label}`, color: left <= OBJECTIVES.timed.warnSec ? '#ff4d6d' : '#ffd60a' };
+      }
+      case 'defend': {
+        if (!this.hold) return { text: '目標：抵達無線電站', color: '#4cc9f0' };
+        const left = Math.max(0, Math.ceil((this.hold.endAt - this.elapsed) / 1000));
+        return { text: `守住無線電站 ${left} 秒`, color: '#4cc9f0', ratio: 1 - left / (OBJECTIVES.defend.holdMs / 1000) };
+      }
+      default: return null;
+    }
+  }
+
+  // 補給車被摧毀：大爆炸，不算擊殺但有金幣
+  onTruckDestroyed(truck) {
+    this.trucksDestroyed++;
+    const y = truck.sprite.y - 26;
+    const blast = this.add.circle(truck.x, y, 70, 0xff7b00, 0.6).setDepth(20).setScale(0.3);
+    this.tweens.add({ targets: blast, scale: 1, alpha: 0, duration: 400, onComplete: () => blast.destroy() });
+    this.cameras.main.shake(250, 0.012);
+    this.sfx('explosion');
+    const done = this.trucksDestroyed >= this.trucksTotal;
+    this.banner(`補給車 ${this.trucksDestroyed} / ${this.trucksTotal} 摧毀！+${truck.def.coins}${done ? '\n全部摧毀，前往撤離點' : ''}`,
+      '#ffd60a', 2000, 200).setFontSize(24);
   }
 
   syncCamera() {
@@ -164,13 +267,17 @@ export default class GameScene extends Phaser.Scene {
 
   // ---------- 生成 ----------
 
+  // 終點：撤離點旗子；守點任務是無線電站
   createEvac() {
     const y = this.groundAt(this.evacX);
-    this.add.image(this.evacX, y, 'evac').setOrigin(0.15, 1).setDepth(2);
-    this.add.text(this.evacX + 10, y - 140, '撤離點', {
-      fontFamily: FONT, fontSize: '22px', color: '#2dc653', fontStyle: 'bold',
+    const defend = this.objective === 'defend';
+    const color = defend ? 0x4cc9f0 : 0x2dc653;
+    if (defend) this.add.image(this.evacX + 30, y, 'radio').setOrigin(0.5, 1).setDepth(2);
+    else this.add.image(this.evacX, y, 'evac').setOrigin(0.15, 1).setDepth(2);
+    this.add.text(this.evacX + 10, y - 140, defend ? '無線電站' : '撤離點', {
+      fontFamily: FONT, fontSize: '22px', color: defend ? '#4cc9f0' : '#2dc653', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(2);
-    const beacon = this.add.circle(this.evacX, y - 4, 30, 0x2dc653, 0.35).setDepth(1);
+    const beacon = this.add.circle(this.evacX, y - 4, 30, color, 0.35).setDepth(1);
     this.tweens.add({ targets: beacon, scale: 1.8, alpha: 0, duration: 1200, repeat: -1 });
   }
 
@@ -232,6 +339,56 @@ export default class GameScene extends Phaser.Scene {
 
   spawnHealthPack(x) {
     this.spawnPickup(x, 'medkit', HEALTH_PACK.amount);
+  }
+
+  // ---------- 戰區天氣 ----------
+
+  // 雪地一直飄雪；沙漠週期性颳沙塵暴。第一次來到新戰區時說明環境特性
+  setupWeather() {
+    const { feature, tip, id } = this.theater;
+    this.storm = null;
+    if (feature === 'ice') {
+      this.add.particles(0, 0, 'flake', {
+        x: { min: 0, max: GAME_W + 200 }, y: -10, lifespan: 7000,
+        speedY: { min: 40, max: 90 }, speedX: { min: -50, max: -15 },
+        scale: { min: 0.35, max: 1 }, alpha: { min: 0.4, max: 0.9 }, frequency: 60,
+      }).setScrollFactor(0).setDepth(25);
+    }
+    if (feature === 'sandstorm') {
+      const fx = THEATER_FX.sandstorm;
+      const overlay = this.add.graphics().setScrollFactor(0).setDepth(24).setAlpha(0);
+      overlay.fillGradientStyle(0xc98b4f, 0xc98b4f, 0xc98b4f, 0xc98b4f, 0.12, 0.72, 0.12, 0.72);
+      overlay.fillRect(0, 0, GAME_W, GROUND_Y + 60);
+      const sand = this.add.particles(0, 0, 'sand', {
+        x: GAME_W + 20, y: { min: 0, max: GROUND_Y + 40 }, lifespan: 1600,
+        speedX: { min: -950, max: -600 }, speedY: { min: -20, max: 40 },
+        alpha: { start: 0.8, end: 0 }, frequency: 12, emitting: false,
+      }).setScrollFactor(0).setDepth(25);
+      this.storm = { active: false, nextAt: Phaser.Math.Between(...fx.firstAt), endAt: 0, overlay, sand };
+    }
+    const seen = this.registry.get('seenTheaters') || [];
+    if (tip && !seen.includes(id)) {
+      this.registry.set('seenTheaters', [...seen, id]);
+      this.queueTip(tip, '#ffd60a', 3500);
+    }
+  }
+
+  updateWeather() {
+    const s = this.storm;
+    if (!s) return;
+    const fx = THEATER_FX.sandstorm;
+    if (!s.active && this.elapsed >= s.nextAt) {
+      s.active = true;
+      s.endAt = this.elapsed + fx.durationMs;
+      s.sand.start();
+      this.tweens.add({ targets: s.overlay, alpha: 1, duration: 900 });
+      this.queueTip('沙塵暴來襲！看不清楚，但敵人也瞄不準', '#e9c46a', 2200);
+    } else if (s.active && this.elapsed >= s.endAt) {
+      s.active = false;
+      s.nextAt = this.elapsed + Phaser.Math.Between(...fx.every);
+      s.sand.stop();
+      this.tweens.add({ targets: s.overlay, alpha: 0, duration: 1200 });
+    }
   }
 
   // ---------- 空投補給與戰術卡 ----------
@@ -330,15 +487,21 @@ export default class GameScene extends Phaser.Scene {
 
   // 自動瞄準前方射程內最近的敵人（含塔上的狙擊手），有高低差時子彈會斜著飛；沒有目標就水平射擊
   aimAngle(x, y, weapon) {
+    const target = this.findTarget(x, weapon.range);
+    if (!target) return 0;
+    return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -1.1, 0.9);
+  }
+
+  // 前方射程內最近的敵人（含狙擊手），支援無人機也用來判斷要不要開火
+  findTarget(x, range) {
     let target = null;
     for (const e of [...this.enemies, ...this.snipers]) {
       if (!e.alive) continue;
       const dx = e.x - x;
-      if (dx <= 10 || dx > weapon.range + 40) continue;
+      if (dx <= 10 || dx > range + 40) continue;
       if (!target || e.x < target.x) target = e;
     }
-    if (!target) return 0;
-    return Phaser.Math.Clamp(Math.atan2(target.chestY - y, target.x - x), -0.9, 0.9);
+    return target;
   }
 
   // 開火：戰術卡「雙發子彈」會上下各射一發（每發傷害打折）
@@ -359,6 +522,8 @@ export default class GameScene extends Phaser.Scene {
     const count = weapon.pellets || 1;
     // 可貫穿幾個敵人：狙擊槍無限、戰術卡「穿甲彈」一個
     const pierceLeft = weapon.pierce ? Infinity : this.has('pierce') ? 1 : 0;
+    // 同一發霰彈共用：記錄每個敵人被打中幾顆（震開盾兵）、已擊退過誰
+    const volley = weapon.stagger ? { shieldHits: new Map(), knocked: new Set() } : null;
     for (let i = 0; i < count; i++) {
       const angle = base + (count > 1 ? Phaser.Math.DegToRad(weapon.spread * (i / (count - 1) - 0.5)) : 0);
       const b = this.playerBullets.create(x, y, weapon.texture || 'pbullet').setRotation(angle);
@@ -369,6 +534,9 @@ export default class GameScene extends Phaser.Scene {
         pierceLeft,
         armorPierce: !!weapon.pierce, // 能打穿盾兵的盾（只有狙擊槍）
         explosive: weapon.explosive || null,
+        closeRange: weapon.closeRange || null,
+        stagger: weapon.stagger || null,
+        volley,
         hitRefs: new Set(), // 貫穿彈已經打過的目標，避免同一個目標每幀重複受傷
       });
       b.setVelocity(Math.cos(angle) * weapon.bulletSpeed, Math.sin(angle) * weapon.bulletSpeed);
@@ -461,15 +629,36 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // 空中子彈垂直落下，地上先顯示紅色落點
-  fireAirBullet(x, y) {
-    this.sfx('airShot');
-    const b = this.airBullets.create(x, y, 'abullet');
-    b.setData({ damage: AIR_RAID.damage, shieldCost: AIR_RAID.shieldCost, originX: -Infinity });
-    b.setVelocityY(AIR_RAID.bulletSpeed);
-    const groundY = this.groundAt(x);
-    const fallMs = ((groundY - y) / AIR_RAID.bulletSpeed) * 1000;
-    const mark = this.add.ellipse(x, groundY - 2, 18, 6, 0xff2d2d, 0.7).setDepth(3);
-    this.tweens.add({ targets: mark, alpha: 0, duration: fallMs, onComplete: () => mark.destroy() });
+  // opts：無人機炸彈用，可以斜著飛（vx）、換貼圖和傷害
+  fireAirBullet(x, y, opts = {}) {
+    const {
+      damage = AIR_RAID.damage, shieldCost = AIR_RAID.shieldCost, vx = 0, vy = AIR_RAID.bulletSpeed,
+      texture = 'abullet', sound = 'airShot', markW = 18,
+    } = opts;
+    this.sfx(sound);
+    const b = this.airBullets.create(x, y, texture);
+    b.setData({ damage, shieldCost, originX: -Infinity });
+    b.setVelocity(vx, vy);
+    // 地上先顯示落點（斜著飛的炸彈用目前高度估計）
+    const fallSec = (this.groundAt(x) - y) / vy;
+    const landX = x + vx * fallSec;
+    const mark = this.add.ellipse(landX, this.groundAt(landX) - 2, markW, 6, 0xff2d2d, 0.7).setDepth(3);
+    this.tweens.add({ targets: mark, alpha: 0, duration: fallSec * 1000, onComplete: () => mark.destroy() });
+  }
+
+  // 無人機投彈：朝玩家頭頂斜著丟下去，要用對空盾擋
+  dropDroneBomb(drone) {
+    const d = drone.def;
+    const sx = drone.x - 6;
+    const sy = drone.sprite.y;
+    const p = this.player;
+    const tx = p.x + p.sprite.body.velocity.x * 0.35; // 稍微預判玩家移動
+    const ty = p.y - 60;
+    const angle = Math.atan2(ty - sy, tx - sx);
+    this.fireAirBullet(sx, sy, {
+      damage: d.bombDamage, shieldCost: d.shieldCost, texture: 'dbomb', sound: 'throw', markW: 30,
+      vx: Math.cos(angle) * d.bombSpeed, vy: Math.sin(angle) * d.bombSpeed,
+    });
   }
 
   sniperShot(sniper, lockX, lockY) {
@@ -622,12 +811,17 @@ export default class GameScene extends Phaser.Scene {
     if (enemy.guarding && !bullet.getData('armorPierce')) {
       this.spark(bullet.x, bullet.y, 0xdee2e6);
       this.sfx('ting');
+      this.staggerShield(bullet, enemy);
       bullet.destroy();
       return;
     }
     // 同一顆子彈對同一個敵人只算一次（貫穿彈穿過時會連續好幾幀重疊）
     if (!this.firstHit(bullet, enemy)) return;
-    const damage = bullet.getData('damage');
+    let damage = bullet.getData('damage');
+    // 霰彈槍近距離命中：傷害加成
+    const close = bullet.getData('closeRange');
+    if (close && Math.abs(bullet.x - bullet.getData('originX')) <= close.within) damage *= close.mul;
+    this.knockbackCharger(bullet, enemy); // 要在子彈銷毀前讀它的資料
     const pierceLeft = bullet.getData('pierceLeft');
     if (pierceLeft > 0) {
       // 貫穿彈：打中後繼續飛，可貫穿的數量減一
@@ -637,6 +831,27 @@ export default class GameScene extends Phaser.Scene {
     }
     this.spark(bullet.x, bullet.y, 0xffd60a);
     this.damageEnemy(enemy, damage);
+  }
+
+  // 霰彈槍：同一發有好幾顆打在盾兵的盾上，就把盾震開一下
+  staggerShield(bullet, enemy) {
+    const st = bullet.getData('stagger');
+    const volley = bullet.getData('volley');
+    if (!st || !volley) return;
+    const hits = (volley.shieldHits.get(enemy) || 0) + 1;
+    volley.shieldHits.set(enemy, hits);
+    if (hits !== st.pellets) return;
+    enemy.openUntil = this.time.now + st.openMs;
+    this.floatText(enemy.x, enemy.sprite.y - 80, '震開！', '#4cc9f0');
+  }
+
+  // 霰彈槍：把衝鋒兵往後打退，並讓他停頓一下（同一發只退一次）
+  knockbackCharger(bullet, enemy) {
+    const st = bullet.getData('stagger');
+    const volley = bullet.getData('volley');
+    if (!st || !volley || enemy.def.ai !== 'charger' || volley.knocked.has(enemy)) return;
+    volley.knocked.add(enemy);
+    enemy.knockback(st.knockback, st.chargerStunMs);
   }
 
   // 玩家造成的傷害倍率：戰術卡「玻璃大砲」、「狂戰士」
@@ -662,9 +877,13 @@ export default class GameScene extends Phaser.Scene {
   // 擊殺結算：地面敵人、狙擊手、Boss 共用
   onKill(enemy) {
     this.sfx('enemyDie');
-    this.kills++;
     this.killCoins += enemy.def.coins;
     this.enemies = this.enemies.filter((e) => e !== enemy);
+    if (enemy.def.vehicle) {
+      this.onTruckDestroyed(enemy);
+      return;
+    }
+    this.kills++;
     this.countStreak();
     // 戰術卡掉落物：掉在敵人腳下（狙擊手掉在塔下）
     if (this.has('medkitDrop') && Math.random() < CV.medkitChance) this.spawnPickup(enemy.x, 'medkit', CV.medkitAmount, 0.75);
@@ -842,13 +1061,15 @@ export default class GameScene extends Phaser.Scene {
     const bonus = victory ? COINS.missionBonus(this.missionNo) : 0;
     const subtotal = distance + this.killCoins + bonus;
     const gambler = this.has('gambler') ? CV.gamblerCoinMul : 1;
-    const mul = this.stats.coinMul * this.mode.coinMul * gambler; // 升級加成 × 難度倍率 × 賭徒
+    const timed = victory && this.objective === 'timed' ? OBJECTIVES.timed.coinMul : 1;
+    const mul = this.stats.coinMul * this.mode.coinMul * gambler * timed; // 升級加成 × 難度倍率 × 賭徒 × 限時任務
     const total = Math.round(subtotal * mul * (victory ? 1 : COINS.deathMul));
     return { distance, kills: this.killCoins, bonus, mul, halved: !victory, total };
   }
 
   // retreat：從暫停選單撤退，跟陣亡一樣結算（金幣減半、重打本關）
-  finish(victory, retreat = false) {
+  // reason 'timeout'：限時任務時間到，同樣算失敗
+  finish(victory, retreat = false, reason = null) {
     if (this.over) return;
     this.over = true;
     this.physics.pause();
@@ -870,7 +1091,9 @@ export default class GameScene extends Phaser.Scene {
 
     this.sfx(victory ? 'victory' : 'defeat');
     if (victory) {
-      this.banner('抵達撤離點！任務完成', '#2dc653', 0);
+      this.banner(this.objective === 'defend' ? '守住無線電站！任務完成' : '抵達撤離點！任務完成', '#2dc653', 0);
+    } else if (reason === 'timeout') {
+      this.banner('時間到！直升機已經離開', '#e63946', 0).setFontSize(40);
     } else if (retreat) {
       this.banner('撤退', '#ffd60a', 0).setFontSize(56);
     } else {
@@ -882,6 +1105,7 @@ export default class GameScene extends Phaser.Scene {
       this.scene.start('Result', {
         victory,
         retreat,
+        timeout: reason === 'timeout',
         mission: this.missionNo,
         meters: this.meters,
         kills: this.kills,
@@ -897,7 +1121,8 @@ export default class GameScene extends Phaser.Scene {
 
   // 三顆星：完成任務、剩餘生命夠多、限時內完成（沒完成任務就沒有星）
   calcStars(victory) {
-    const par = parTime(this.mission.length);
+    // 守點任務的限時要加上守點時間
+    const par = parTime(this.mission.length) + (this.objective === 'defend' ? OBJECTIVES.defend.holdMs / 1000 : 0);
     const timeSec = Math.round(this.elapsed / 1000);
     const earned = victory
       ? [true, this.player.hp / this.player.maxHp >= STARS.hpRatio, timeSec <= par]

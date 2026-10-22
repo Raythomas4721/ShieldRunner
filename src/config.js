@@ -37,6 +37,47 @@ export const COLORS = {
   laser: 0xff2d2d, // 狙擊手紅線
 };
 
+// 戰區：每 5 關換一個，21 關之後循環。配色、背景樣式和環境特性都在這裡
+// sky：天空上下漸層；moon：月亮（或夕陽）顏色、sunset：畫成地平線上的大夕陽；stars：星星亮度
+// ground：地面填色／地表線／地層線；layers：遠中近三層背景的顏色（style 決定畫法，見 BootScene.makeLayers）
+export const THEATERS = [
+  {
+    id: 'night', name: '夜間山區', style: 'mountain', feature: null,
+    sky: [0x050816, 0x1b2a4a], moon: 0xe9eef2, stars: 1,
+    ground: { fill: 0x0d0d12, top: 0x3a506b, layer: 0x1a1f2e },
+    layers: { far: 0x1b2a4a, cap: 0x52688f, mid: 0x14213d, near: 0x0b1120 },
+  },
+  {
+    id: 'desert', name: '沙漠', style: 'desert', feature: 'sandstorm',
+    sky: [0x1d1030, 0x7a3b3b], moon: 0xff9e57, sunset: true, stars: 0.5,
+    ground: { fill: 0x1c120c, top: 0xc98b4f, layer: 0x3a2516 },
+    layers: { far: 0x4a2c40, cap: 0x6b3d4c, mid: 0x33202c, near: 0x1f1318 },
+    tip: '沙漠戰區：會颳沙塵暴，視線變差，但敵人也比較難瞄準（開火變慢）',
+  },
+  {
+    id: 'snow', name: '雪地', style: 'snow', feature: 'ice',
+    sky: [0x08152a, 0x3d5a80], moon: 0xf1faee, stars: 0.8,
+    ground: { fill: 0x172235, top: 0xe0fbfc, layer: 0x2c3e57 },
+    layers: { far: 0x4f6d93, cap: 0xe0fbfc, mid: 0x2d4867, near: 0x16253b },
+    tip: '雪地戰區：地面結冰，放開前進會滑一段才停下，提早放開！',
+  },
+  {
+    id: 'city', name: '廢墟城市', style: 'city', feature: 'windows',
+    sky: [0x0d0308, 0x4a1020], moon: 0xff8fa3, stars: 0.25,
+    ground: { fill: 0x0f0d10, top: 0x6c5b5f, layer: 0x231c20 },
+    layers: { far: 0x3a1420, mid: 0x26101a, near: 0x140a0f, windows: 0xffd166 },
+    tip: '廢墟城市：大樓窗口埋伏更多狙擊手，注意紅線！',
+  },
+];
+export const theaterOf = (n) => THEATERS[Math.floor((n - 1) / 5) % THEATERS.length];
+
+// 戰區環境特性的數值
+export const THEATER_FX = {
+  sandstorm: { firstAt: [6000, 10000], every: [16000, 22000], durationMs: 8000, fireMul: 1.3 },
+  ice: { slideDecel: 260 }, // 放開前進後每秒減速多少 px/s
+  windows: { sniperBonus: 0.08 },
+};
+
 // 基礎數值，實際值會再套用軍火庫的升級（見 playerStats）
 export const PLAYER = {
   maxHp: 100,
@@ -66,9 +107,11 @@ export const WEAPONS = {
     fireRate: 100, damage: 14, bulletSpeed: 800, range: 380, magSize: 30, reloadMs: 1800,
   },
   shotgun: {
-    name: '霰彈槍', price: 600, desc: '一次 5 發散彈，近距離爆發', sound: 'shotgun',
-    fireRate: 750, damage: 20, pellets: 5, spread: 16, bulletSpeed: 700, range: 260, magSize: 6, reloadMs: 2000,
+    name: '霰彈槍', price: 600, desc: '貼近爆發，可震開盾兵', sound: 'shotgun',
+    fireRate: 750, damage: 16, pellets: 6, spread: 11, bulletSpeed: 750, range: 320, magSize: 8, reloadMs: 1800,
     texture: 'pellet',
+    closeRange: { within: 150, mul: 1.25 },         // 離槍口這段距離內命中，傷害加成
+    stagger: { pellets: 3, openMs: 900, knockback: 40, chargerStunMs: 400 }, // 同一發打中盾兵幾顆就震開盾；衝鋒兵被擊退
   },
   rifle: {
     name: '狙擊槍', price: 1000, desc: '一發一個，可貫穿多名敵人', sound: 'rifle',
@@ -88,8 +131,26 @@ export const UPGRADES = {
   shield: { name: '盾牌耐久', maxLevel: 5, basePrice: 150 },
   speed: { name: '移動速度', maxLevel: 5, basePrice: 120 },
   coin: { name: '金幣加成', maxLevel: 5, basePrice: 200 },
+  drone: { name: '支援無人機', maxLevel: 3, prices: [500, 900, 1400] },
 };
-export const upgradePrice = (key, level) => UPGRADES[key].basePrice * (level + 1);
+export const upgradePrice = (key, level) => {
+  const u = UPGRADES[key];
+  return u.prices ? u.prices[level] : u.basePrice * (level + 1);
+};
+
+// 支援無人機：跟在玩家身邊自動點射，Lv3 會定時攔截一發朝玩家飛來的子彈
+export const BUDDY = {
+  levels: [
+    null,
+    { damage: 8, fireRate: 900, desc: '點射 8' },
+    { damage: 12, fireRate: 700, desc: '點射 12・更快' },
+    { damage: 12, fireRate: 700, intercept: true, desc: '點射 12・攔截子彈' },
+  ],
+  range: 380,
+  bulletSpeed: 800,
+  interceptEveryMs: 10000,
+  interceptRange: 110, // 子彈離玩家多近時攔截
+};
 
 // 依升級等級算出這一局的玩家數值
 export const playerStats = (upgrades) => ({
@@ -97,17 +158,20 @@ export const playerStats = (upgrades) => ({
   shieldMax: SHIELD.max + 20 * upgrades.shield,
   speed: Math.round(PLAYER.speed * (1 + 0.08 * upgrades.speed)),
   coinMul: 1 + 0.1 * upgrades.coin,
+  buddy: upgrades.drone || 0,
 });
 
 // 升級說明文字，例如「生命 120 → 140」
 export const upgradeEffect = (key, level) => {
-  const now = playerStats({ hp: 0, shield: 0, speed: 0, coin: 0, [key]: level });
-  const next = playerStats({ hp: 0, shield: 0, speed: 0, coin: 0, [key]: level + 1 });
+  const base = { hp: 0, shield: 0, speed: 0, coin: 0, drone: 0 };
+  const now = playerStats({ ...base, [key]: level });
+  const next = playerStats({ ...base, [key]: level + 1 });
   const show = {
     hp: (s) => `生命 ${s.maxHp}`,
     shield: (s) => `盾值 ${s.shieldMax}`,
     speed: (s) => `速度 ${Math.round((s.speed / PLAYER.speed) * 100)}%`,
     coin: (s) => `金幣 ×${s.coinMul.toFixed(1)}`,
+    drone: (s) => (s.buddy ? BUDDY.levels[s.buddy].desc : '未購買'),
   }[key];
   return level >= UPGRADES[key].maxLevel ? show(now) : `${show(now)} → ${show(next)}`;
 };
@@ -257,7 +321,7 @@ export const ENEMIES = {
     fireRange: 700, firstShotDelay: [600, 1200], fireInterval: [2200, 3000], aimMs: 600,
     burst: 1, openMs: 500,
     bulletSpeed: 320, bulletDamage: 12,
-    tip: '盾兵：正面有盾，趁他放下盾開槍時反擊（狙擊槍、火箭筒可直接破盾）',
+    tip: '盾兵：正面有盾，趁他放下盾開槍時反擊（霰彈槍可震開盾，狙擊槍、火箭筒可直接破盾）',
   },
   grenadier: {
     name: '擲彈兵', texture: 'grenadier', ai: 'grenadier',
@@ -270,6 +334,26 @@ export const ENEMIES = {
     damage: 22,        // 落地爆炸傷害，正面盾擋不住
     shieldCost: 15,    // 用對空盾在空中擋下的耗盾
     tip: '擲彈兵：手榴彈從上方丟過來，正面盾擋不住！看到紅圈快移動，或舉「對空」盾',
+  },
+  drone: {
+    name: '無人機', texture: 'drone', ai: 'drone', flying: true, // 飛行敵人不會擋住玩家前進
+    hp: 50, coins: 8,
+    flyHeight: 135,          // 離地高度
+    hoverAhead: [150, 230],  // 停在玩家前方這段距離
+    speed: 240,
+    engageRange: 650,        // 與玩家距離小於此值開始飛過來
+    firstBomb: [1000, 1600],
+    bombEvery: [2400, 3200],
+    aimMs: 350,              // 投彈前閃黃色
+    bombSpeed: 250,
+    bombDamage: 14,
+    shieldCost: 14,
+    tip: '無人機：會飛到前上方往你丟炸彈，舉「對空」盾擋，或趁早打下來！',
+  },
+  // 「摧毀補給車」任務的目標：不會攻擊，但會擋路，前面有守衛
+  truck: {
+    name: '敵方補給車', texture: 'truck', ai: 'static', vehicle: true,
+    hp: 220, coins: 15,
   },
   boss: {
     name: '裝甲指揮官', texture: 'boss', ai: 'shooter', boss: true,
@@ -290,6 +374,7 @@ export const enemyPool = (n) => [
   ...(n >= 3 ? [['charger', 1 + n]] : []),
   ...(n >= 4 ? [['shielder', n]] : []),
   ...(n >= 5 ? [['grenadier', n - 2]] : []),
+  ...(n >= 7 ? [['drone', n - 4]] : []),
 ];
 
 // 狙擊手：站在高塔上，紅線鎖定後移動就能閃開
@@ -353,14 +438,48 @@ export const SPAWN = {
 // 關卡：越後面越長、越難，空襲次數越多
 export const missionConfig = (n) => ({
   number: n,
+  theater: theaterOf(n),
+  objective: objectiveOf(n),
   length: Math.min(300 + (n - 1) * 100, 1000), // 公尺
   baseDifficulty: Math.max(0.55, 1 - (n - 1) * 0.05),
-  sniperChance: Math.min(0.25, 0.08 + 0.03 * (n - 1)),
+  sniperChance: Math.min(0.25, 0.08 + 0.03 * (n - 1))
+    + (theaterOf(n).feature === 'windows' ? THEATER_FX.windows.sniperBonus : 0),
   raids: Math.min(1 + Math.floor((n - 1) / 2), 3),
   boss: n % 3 === 0,                                            // 每 3 關撤離點前有 Boss
   bossHpMul: 1 + 0.25 * (Math.floor(n / 3) - 1),                // 第 2 次出現起每次血量 +25%
-  newEnemy: { 2: 'gunner', 3: 'charger', 4: 'shielder', 5: 'grenadier' }[n] || null, // 這關新登場的敵人
+  newEnemy: { 2: 'gunner', 3: 'charger', 4: 'shielder', 5: 'grenadier', 7: 'drone' }[n] || null, // 這關新登場的敵人
 });
+
+// 任務目標：前 3 關與 Boss 關都是撤離，其他關卡輪流守點、破壞、限時
+export const OBJECTIVES = {
+  evac: { name: '抵達撤離點', short: '撤離' },
+  defend: {
+    name: '守住無線電站', short: '守點',
+    holdMs: 30000,               // 抵達後要撐多久
+    waveEvery: [3200, 4600],     // 每隔多久從右邊來一個敵人
+    standAt: [220, 340],         // 增援走到玩家前方這段距離停下開火
+    raidAt: 0.5,                 // 守到一半時來一次空襲
+  },
+  destroy: {
+    name: '摧毀補給車', short: '破壞',
+    truckAt: [0.3, 0.55, 0.8],   // 補給車在路線上的位置（每台金幣見 ENEMIES.truck）
+  },
+  timed: {
+    name: '限時撤離', short: '限時',
+    timeMul: 0.9,                // 限時 = 星等標準時間 × 這個倍率（比三星標準再緊一點）
+    coinMul: 1.3,                // 獎勵加成
+    warnSec: 10,                 // 剩下幾秒開始變紅
+  },
+};
+export const objectiveOf = (n) => {
+  if (n <= 3 || n % 3 === 0) return 'evac';
+  return ['defend', 'destroy', 'timed'][(n - Math.floor(n / 3) - 3) % 3];
+};
+// 選擇任務、主選單用的簡短說明，例如「沙漠・守住無線電站」
+export const missionSubtitle = (n) => {
+  const m = missionConfig(n);
+  return [m.theater.name, OBJECTIVES[m.objective].name, ...(m.boss ? ['Boss'] : [])].join('・');
+};
 
 // 空襲發生的進度點，平均分布在 35%～85% 之間
 export const raidPoints = (count) =>

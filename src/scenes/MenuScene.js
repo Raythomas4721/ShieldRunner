@@ -1,5 +1,5 @@
 import {
-  GAME_W, GAME_H, GROUND_Y, FONT, COLORS, RANKS, WEAPONS, DIFFICULTY, rankIndexOf,
+  GAME_W, GAME_H, GROUND_Y, FONT, COLORS, RANKS, WEAPONS, DIFFICULTY, rankIndexOf, theaterOf, missionSubtitle,
 } from '../config.js';
 import { loadSave } from '../save.js';
 import { makeButton } from '../ui.js';
@@ -13,6 +13,9 @@ const TIPS = [
   '小技巧：擲彈兵的手榴彈要閃開，或舉「對空」盾擋',
   '小技巧：連續擊殺有額外金幣，火箭筒一次炸好幾個最划算',
   '小技巧：打不過可以去軍火庫升級，或在設定把難度調成簡單',
+  '小技巧：霰彈槍貼近打傷害更高，還能震開盾兵的盾',
+  '小技巧：軍火庫可以買支援無人機，會跟著你自動開槍',
+  '小技巧：每 5 關換一個戰區，沙漠有沙塵暴、雪地會滑',
   '電腦操作：→ 前進　J 開火　K 盾牌　L 對空　P 暫停',
 ];
 
@@ -26,12 +29,13 @@ export default class MenuScene extends Phaser.Scene {
     const cx = GAME_W / 2;
     const save = loadSave();
 
-    // 背景：和遊戲裡一樣的夜空與山，緩慢捲動
-    this.background = new Background(this);
+    // 背景：目前任務所在戰區的天空與遠景，緩慢捲動
+    const theater = theaterOf(save.mission);
+    this.background = new Background(this, theater);
     this.scrollX = 0;
     const ground = this.add.graphics();
-    ground.fillStyle(COLORS.ground).fillRect(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y);
-    ground.lineStyle(5, COLORS.groundTop).lineBetween(0, GROUND_Y, GAME_W, GROUND_Y);
+    ground.fillStyle(theater.ground.fill).fillRect(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y);
+    ground.lineStyle(5, theater.ground.top).lineBetween(0, GROUND_Y, GAME_W, GROUND_Y);
     this.createDemo();
 
     // 標題
@@ -74,6 +78,10 @@ export default class MenuScene extends Phaser.Scene {
       this.scene.start('Game', { mission: save.mission });
     };
     const main = makeButton(this, cx, 412, 320, 66, `▶  開始任務 ${save.mission}`, 0x2a9d8f, start, { fontSize: 28 });
+    this.add.text(cx, 366, missionSubtitle(save.mission), {
+      fontFamily: FONT, fontSize: '16px', color: '#ffd60a', fontStyle: 'bold',
+      backgroundColor: '#050816a0', padding: { x: 10, y: 3 },
+    }).setOrigin(0.5);
     this.tweens.add({ targets: [main.bg, main.text], scale: 1.05, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     makeButton(this, cx - 220, 490, 200, 50, '選擇任務', 0x7b2cbf, () => this.scene.start('Missions'), { fontSize: 20 });
     makeButton(this, cx, 490, 200, 50, '軍火庫', 0xe85d04, () => this.scene.start('Shop'), { fontSize: 20 });

@@ -45,9 +45,14 @@ export default class HUD {
 
     // Boss 進入畫面後顯示血條
     const boss = game.boss;
+    const status = game.objectiveStatus();
     if (boss && boss.alive && boss.x - player.x < 800) {
-      this.bossText.setText(boss.def.name);
+      this.bossText.setText(boss.def.name).setColor('#ff006e');
       this.bar(GAME_W / 2 - PROGRESS_W / 2, 84, PROGRESS_W, 10, boss.hp / boss.maxHp, 0xff006e);
+    } else if (status) {
+      // 任務目標：補給車數量、撤離倒數、守點倒數
+      this.bossText.setText(status.text).setColor(status.color).setFontSize(status.ratio === undefined ? 17 : 15);
+      if (status.ratio !== undefined) this.bar(GAME_W / 2 - PROGRESS_W / 2, 84, PROGRESS_W, 8, status.ratio, 0x4cc9f0);
     } else {
       this.bossText.setText('');
     }

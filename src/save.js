@@ -6,7 +6,7 @@ const DEFAULT_SAVE = {
   coins: 0,
   owned: ['pistol'],
   equipped: 'pistol',
-  upgrades: { hp: 0, shield: 0, speed: 0, coin: 0 },
+  upgrades: { hp: 0, shield: 0, speed: 0, coin: 0, drone: 0 },
   stars: {},              // 每關最佳星等 { 關卡編號: 0～3 }
   tutorialDone: false,
   // 設定

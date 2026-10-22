@@ -10,7 +10,9 @@ export default class Sniper {
     this.x = x;
     this.baseY = scene.terrain.heightAt(x);
     const topY = this.baseY - SNIPER.towerHeight;
-    this.tower = scene.add.image(x, this.baseY, 'tower').setOrigin(0.5, 1).setDepth(2);
+    // 廢墟城市的狙擊手躲在破損大樓頂樓
+    const towerKey = scene.mission.theater.feature === 'windows' ? 'building' : 'tower';
+    this.tower = scene.add.image(x, this.baseY, towerKey).setOrigin(0.5, 1).setDepth(2);
     this.sprite = group.create(x, topY, 'sniper').setOrigin(0.5, 1).setDepth(4);
     this.sprite.setData('ref', this);
     this.gunX = x - 30;

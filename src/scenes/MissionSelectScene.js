@@ -1,4 +1,4 @@
-import { GAME_W, FONT, missionConfig } from '../config.js';
+import { GAME_W, FONT, OBJECTIVES, missionConfig } from '../config.js';
 import { loadSave } from '../save.js';
 import { makeButton } from '../ui.js';
 import { sfx } from '../systems/Sound.js';
@@ -43,14 +43,17 @@ export default class MissionSelectScene extends Phaser.Scene {
     const bg = this.add.rectangle(x, y, CELL_W - 14, CELL_H, isNew ? 0x16324f : 0x111827)
       .setStrokeStyle(2, isNew ? 0x3a86ff : 0x2b2d42)
       .setInteractive({ useHandCursor: true });
-    this.add.text(x, y - 24, `任務 ${n}`, { fontFamily: FONT, fontSize: '20px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(x, y + 2, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, {
-      fontFamily: FONT, fontSize: '20px', color: stars ? '#ffd60a' : '#495057',
+    this.add.text(x, y - 27, `任務 ${n}`, { fontFamily: FONT, fontSize: '20px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(x, y - 5, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, {
+      fontFamily: FONT, fontSize: '18px', color: stars ? '#ffd60a' : '#495057',
+    }).setOrigin(0.5);
+    this.add.text(x, y + 16, `${m.theater.name}・${OBJECTIVES[m.objective].short}`, {
+      fontFamily: FONT, fontSize: '13px', color: '#8ecae6',
     }).setOrigin(0.5);
     const tags = [`${m.length}m`];
     if (m.boss) tags.push('Boss');
     if (isNew) tags.push('最新');
-    this.add.text(x, y + 28, tags.join('・'), {
+    this.add.text(x, y + 33, tags.join('・'), {
       fontFamily: FONT, fontSize: '13px', color: m.boss ? '#ff006e' : '#8d99ae',
     }).setOrigin(0.5);
     bg.on('pointerdown', () => {

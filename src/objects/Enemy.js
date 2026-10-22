@@ -7,7 +7,9 @@ export default class Enemy {
     this.type = type;
     this.def = ENEMIES[type];
     const groundY = scene.terrain.heightAt(x);
-    this.sprite = group.create(x, groundY, this.def.texture).setOrigin(0.5, 1).setDepth(4);
+    const y = this.def.flying ? groundY - this.def.flyHeight : groundY;
+    this.sprite = group.create(x, y, this.def.texture).setOrigin(0.5, 1).setDepth(this.def.flying ? 7 : 4);
+    if (this.def.flying) this.hover = Phaser.Math.Between(...this.def.hoverAhead); // 停在玩家前方多遠
     this.sprite.setData('ref', this);
     this.hp = this.def.hp;
     this.alive = true;
@@ -18,6 +20,7 @@ export default class Enemy {
     this.openUntil = 0;  // 盾兵開火後放下盾的時間
     this.charging = false;
     this.nextMelee = 0;
+    this.stunUntil = 0;  // 被霰彈槍擊退後停頓到這個時間
     this.seen = false;   // 是否已進入玩家視線（用來顯示新敵人提示）
     if (this.def.guard) {
       this.shield = scene.add.image(x - 26, groundY - 2, 'eshield').setOrigin(0.5, 1).setDepth(5);
@@ -40,13 +43,29 @@ export default class Enemy {
 
   update(time, playerX, difficulty) {
     if (!this.alive) return;
-    this.sprite.y = this.scene.terrain.heightAt(this.x);
+    if (!this.def.flying) this.sprite.y = this.scene.terrain.heightAt(this.x);
     if (!this.seen && this.x - playerX < 700) {
       this.seen = true;
       this.scene.onEnemySeen(this);
     }
+    if (this.walkTo !== undefined && !this.def.flying) {
+      // 守點任務的增援：先從畫面外走進來，就定位後才開始攻擊
+      if (this.x > this.walkTo) {
+        this.sprite.setVelocityX(-110);
+        this.syncShield();
+        return;
+      }
+      this.sprite.setVelocityX(0);
+      this.walkTo = undefined;
+    }
     if (this.def.ai === 'charger') this.updateCharger(time, playerX);
-    else this.updateShooter(time, playerX, difficulty);
+    else if (this.def.ai === 'drone') this.updateDrone(time, playerX, difficulty);
+    else if (this.def.ai !== 'static') this.updateShooter(time, playerX, difficulty);
+    this.syncShield();
+  }
+
+  // 盾兵的盾跟著人移動，舉盾時才顯示
+  syncShield() {
     if (this.shield) {
       this.shield.setPosition(this.x - 26, this.sprite.y - 2);
       this.shield.setVisible(this.guarding);
@@ -116,7 +135,9 @@ export default class Enemy {
     if (!this.charging) return;
     if (this.alert) this.alert.setPosition(this.x, this.sprite.y - 78);
 
-    if (dist > 34) {
+    if (time < this.stunUntil) {
+      this.sprite.setVelocityX(0);
+    } else if (dist > 34) {
       this.sprite.setVelocityX(-d.speed);
     } else {
       this.sprite.setVelocityX(0);
@@ -125,6 +146,39 @@ export default class Enemy {
         this.scene.meleeHit(this);
       }
     }
+  }
+
+  // 無人機：玩家接近後飛到玩家前上方盤旋，閃黃色後往玩家丟炸彈
+  updateDrone(time, playerX, difficulty) {
+    const d = this.def;
+    const bob = Math.sin(time / 260) * 5;
+    this.sprite.y = this.scene.terrain.heightAt(this.x) - d.flyHeight + bob;
+    if (!this.engaged) {
+      if (this.x - playerX > d.engageRange) return;
+      this.engaged = true;
+      this.nextShot = time + Phaser.Math.Between(...d.firstBomb);
+    }
+    const dx = playerX + this.hover - this.x;
+    this.sprite.setVelocityX(Phaser.Math.Clamp(dx * 4, -d.speed, d.speed));
+
+    if (!this.aiming && time >= this.nextShot - d.aimMs) {
+      this.aiming = true;
+      this.sprite.setTintFill(COLORS.aim);
+    }
+    if (time >= this.nextShot) {
+      this.aiming = false;
+      this.sprite.clearTint();
+      this.scene.dropDroneBomb(this);
+      const [min, max] = d.bombEvery;
+      this.nextShot = time + Phaser.Math.Between(min, max) * difficulty;
+    }
+  }
+
+  // 被霰彈槍擊退：往後退一段並停頓
+  knockback(dx, stunMs) {
+    if (!this.alive) return;
+    this.sprite.x += dx;
+    this.stunUntil = this.scene.time.now + stunMs;
   }
 
   // 受到傷害，回傳是否被擊殺
@@ -151,6 +205,24 @@ export default class Enemy {
     this.sprite.body.enable = false;
     if (this.shield) this.shield.destroy();
     if (this.alert) this.alert.destroy();
+    if (this.def.vehicle) {
+      // 補給車：燒成黑色後慢慢消失
+      this.sprite.setTint(0x333333);
+      this.scene.tweens.add({ targets: this.sprite, alpha: 0, delay: 400, duration: 600, onComplete: () => this.sprite.destroy() });
+      return true;
+    }
+    if (this.def.flying) {
+      // 無人機被擊落：打轉墜地後爆炸
+      const groundY = this.scene.terrain.heightAt(this.x);
+      this.scene.tweens.add({
+        targets: this.sprite, y: groundY, angle: -160, duration: 450, ease: 'Quad.easeIn',
+        onComplete: () => {
+          this.scene.spark(this.x, groundY - 8, 0xff7b00);
+          this.sprite.destroy();
+        },
+      });
+      return true;
+    }
     this.scene.tweens.add({
       targets: this.sprite,
       angle: 80,

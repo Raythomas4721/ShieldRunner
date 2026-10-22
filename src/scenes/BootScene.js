@@ -1,4 +1,4 @@
-import { COLORS } from '../config.js';
+import { COLORS, THEATERS } from '../config.js';
 
 // 用 Graphics 產生色塊貼圖，之後換成正式美術時只要改成載入圖片
 export default class BootScene extends Phaser.Scene {
@@ -62,6 +62,42 @@ export default class BootScene extends Phaser.Scene {
     g.fillStyle(0xadb5bd).fillRect(5, 0, 3, 2);
     make('grenade', 12, 12);
 
+    // 敵方無人機：紫色機身、兩側旋翼、紅色鏡頭，下方掛炸彈
+    g.fillStyle(0x3c096c).fillRect(4, 4, 18, 3).fillRect(30, 4, 18, 3);
+    g.fillStyle(0x5a189a).fillRect(11, 6, 4, 6).fillRect(37, 6, 4, 6);
+    g.fillStyle(0x9d4edd).fillRoundedRect(10, 10, 32, 14, 5);
+    g.fillStyle(0xff2d2d).fillCircle(14, 18, 3);
+    g.fillStyle(0x2d6a4f).fillCircle(26, 27, 4);
+    make('drone', 52, 32);
+    g.fillStyle(0x2d6a4f).fillCircle(5, 5, 5);
+    g.fillStyle(0xff4d6d).fillCircle(5, 5, 2);
+    make('dbomb', 10, 10);
+
+    // 支援無人機（玩家的）：藍色機身、兩側旋翼、青色鏡頭朝右
+    g.fillStyle(0x1d3557).fillRect(2, 2, 14, 3).fillRect(26, 2, 14, 3);
+    g.fillStyle(0x3a86ff).fillRect(7, 4, 3, 5).fillRect(32, 4, 3, 5);
+    g.fillStyle(0x3a86ff).fillRoundedRect(8, 8, 26, 11, 4);
+    g.fillStyle(0x4cc9f0).fillCircle(30, 13, 3);
+    make('buddy', 42, 22);
+
+    // 敵方補給車：車頭朝左，紫灰色車廂載著彈藥箱
+    g.fillStyle(0x3c3a4f).fillRect(30, 8, 62, 34);
+    g.fillStyle(0x5a189a).fillRect(4, 18, 30, 24);
+    g.fillStyle(0x8ecae6, 0.7).fillRect(8, 22, 12, 9);
+    g.fillStyle(0x6b3e26).fillRect(38, 0, 18, 12).fillRect(60, 2, 16, 10);
+    g.fillStyle(0xffd60a).fillRect(34, 22, 54, 4);
+    g.fillStyle(0x111111).fillCircle(18, 44, 8).fillCircle(72, 44, 8);
+    g.fillStyle(0x6c757d).fillCircle(18, 44, 3).fillCircle(72, 44, 3);
+    make('truck', 94, 52);
+
+    // 無線電站（守點任務的據點）：天線塔加通訊箱，頂端閃紅燈
+    g.fillStyle(0x495057).fillRect(18, 4, 4, 92);
+    g.lineStyle(2, 0x6c757d).lineBetween(6, 96, 20, 20).lineBetween(34, 96, 20, 20);
+    g.fillStyle(0xff2d2d).fillCircle(20, 4, 4);
+    g.fillStyle(0x2a9d8f).fillRect(0, 70, 40, 26);
+    g.fillStyle(0x90e0ef).fillRect(6, 76, 12, 6);
+    make('radio', 40, 96);
+
     // Boss：裝甲指揮官，體型較大、紅色護目鏡
     g.fillStyle(0x3c096c).fillRect(14, 26, 44, 60);
     g.fillStyle(0x6c757d).fillRect(10, 30, 8, 24).fillRect(54, 30, 8, 24);
@@ -83,6 +119,23 @@ export default class BootScene extends Phaser.Scene {
     g.lineBetween(12, 110, 48, 70).lineBetween(48, 110, 12, 70).lineBetween(14, 60, 46, 20).lineBetween(46, 60, 14, 20);
     g.fillStyle(0x4a4e69).fillRect(0, 0, 60, 8);
     make('tower', 60, 130);
+
+    // 廢墟城市的狙擊點：破損大樓，頂樓缺一角，窗戶有的亮著
+    g.fillStyle(0x2b1d24).fillRect(0, 10, 64, 120);
+    g.fillStyle(0x0f0d10).fillTriangle(44, 10, 64, 10, 64, 34);
+    g.lineStyle(2, 0x463038).strokeRect(1, 11, 62, 118);
+    for (let wy = 22; wy < 122; wy += 18) {
+      for (let wx = 8; wx < 56; wx += 16) {
+        g.fillStyle(Math.random() < 0.25 ? 0xffd166 : 0x150c11, Math.random() < 0.25 ? 0.7 : 1).fillRect(wx, wy, 8, 10);
+      }
+    }
+    make('building', 64, 130);
+
+    // 天氣粒子：雪花、沙塵
+    g.fillStyle(0xffffff).fillCircle(3, 3, 3);
+    make('flake', 6, 6);
+    g.fillStyle(0xe9c46a).fillRect(0, 0, 18, 2);
+    make('sand', 18, 2);
 
     // 直升機：機頭朝左
     g.fillStyle(COLORS.heli).fillEllipse(50, 28, 72, 30);
@@ -168,14 +221,16 @@ export default class BootScene extends Phaser.Scene {
     }
     make('stars', 256, 200);
 
-    this.makeMountains(g, make);
+    for (const theater of THEATERS) this.makeLayers(g, make, theater);
     g.destroy();
     this.scene.start('Menu');
   }
 
-  // 背景山：用整數倍頻率的正弦波疊加，左右邊緣高度一致，可以無縫重複
-  makeMountains(g, make) {
+  // 每個戰區的三層背景（far / mid / near），貼圖名稱加上戰區 id，例如 far_desert
+  // 用整數倍頻率的正弦波疊加，左右邊緣高度一致；超出邊緣的物件在另一側補畫，可以無縫重複
+  makeLayers(g, make, theater) {
     const W = 512;
+    const { id, style, layers: c } = theater;
     const ridge = (base, waves) => (x) =>
       base - waves.reduce((sum, [amp, freq, phase]) => sum + amp * Math.sin((2 * Math.PI * freq * x) / W + phase), 0);
     const outline = (fn, step = 4) => {
@@ -183,35 +238,111 @@ export default class BootScene extends Phaser.Scene {
       for (let x = 0; x <= W; x += step) pts.push({ x, y: fn(x) });
       return pts;
     };
-
-    // 遠山：高聳尖峰，山頂積雪
+    const fillBelow = (pts, H) => g.fillPoints([...pts, { x: W, y: H }, { x: 0, y: H }], true);
+    const wrap = (x, draw) => { for (const ox of [x - W, x, x + W]) draw(ox); };
     const H1 = 220;
+    const H2 = 160;
+    const H3 = 100;
+
+    if (style === 'city') {
+      // 遠景天際線：高低不一的大樓
+      g.fillStyle(c.far);
+      for (let x = 0; x < W;) {
+        const w = Phaser.Math.Between(26, 54);
+        const h = Phaser.Math.Between(60, 170);
+        g.fillRect(x, H1 - h, w + 1, h);
+        if (Math.random() < 0.3) g.fillRect(x + w / 2 - 2, H1 - h - 18, 3, 18); // 天線
+        x += w;
+      }
+      make(`far_${id}`, W, H1);
+      // 中景：比較近的大樓，有亮著的窗戶
+      for (let x = 0; x < W;) {
+        const w = Phaser.Math.Between(40, 70);
+        const h = Phaser.Math.Between(50, 120);
+        g.fillStyle(c.mid).fillRect(x, H2 - h, w + 1, h);
+        g.fillStyle(c.windows, 0.55);
+        for (let wy = H2 - h + 10; wy < H2 - 10; wy += 14) {
+          for (let wx = x + 6; wx < x + w - 8; wx += 12) if (Math.random() < 0.22) g.fillRect(wx, wy, 5, 6);
+        }
+        x += w + Phaser.Math.Between(4, 20);
+      }
+      make(`mid_${id}`, W, H2);
+      // 近景：崩塌的牆和瓦礫
+      g.fillStyle(c.near).fillRect(0, 76, W, H3 - 76);
+      for (let i = 0; i < 14; i++) {
+        const x = Phaser.Math.Between(0, W);
+        const w = Phaser.Math.Between(20, 46);
+        const h = Phaser.Math.Between(14, 44);
+        wrap(x, (ox) => g.fillTriangle(ox, 78, ox + w * 0.2, 78 - h, ox + w * 0.55, 78 - h * 0.6)
+          .fillRect(ox + w * 0.2, 78 - h * 0.6, w * 0.8, h * 0.6));
+      }
+      make(`near_${id}`, W, H3);
+      return;
+    }
+
+    if (style === 'desert') {
+      // 遠景：平頂台地（山脊在某個高度被削平）
+      const mesa = ridge(120, [[50, 1, 0.9], [26, 3, 2.1], [10, 6, 0.4]]);
+      const top = outline((x) => Math.max(mesa(x), 72));
+      g.fillStyle(c.far);
+      fillBelow(top, H1);
+      // 台地頂端較亮的岩層
+      g.fillStyle(c.cap).fillPoints([...top, ...top.map((p) => ({ x: p.x, y: p.y + 8 })).reverse()], true);
+      make(`far_${id}`, W, H1);
+      // 中景：緩和的沙丘
+      g.fillStyle(c.mid);
+      fillBelow(outline(ridge(96, [[16, 2, 1.4], [9, 4, 0.2], [4, 9, 2.6]])), H2);
+      make(`mid_${id}`, W, H2);
+      // 近景：沙丘加仙人掌剪影
+      g.fillStyle(c.near);
+      fillBelow(outline(ridge(80, [[6, 3, 0.5], [3, 8, 1.7]])), H3);
+      for (let i = 0; i < 9; i++) {
+        const x = Phaser.Math.Between(0, W);
+        const h = Phaser.Math.Between(24, 40);
+        wrap(x, (ox) => {
+          g.fillRoundedRect(ox - 3, 80 - h, 7, h, 3);
+          g.fillRoundedRect(ox - 12, 80 - h * 0.7, 5, h * 0.35, 2).fillRect(ox - 12, 80 - h * 0.4, 10, 4);
+          g.fillRoundedRect(ox + 8, 80 - h * 0.85, 5, h * 0.35, 2).fillRect(ox + 3, 80 - h * 0.55, 10, 4);
+        });
+      }
+      make(`near_${id}`, W, H3);
+      return;
+    }
+
+    // mountain / snow：高聳尖峰（雪地的積雪更多）、圓緩丘陵、松樹林
     const far = ridge(120, [[45, 1, 0.3], [25, 3, 1.1], [14, 7, 2.0], [6, 13, 0.5]]);
     const farTop = outline(far);
-    g.fillStyle(0x1b2a4a).fillPoints([...farTop, { x: W, y: H1 }, { x: 0, y: H1 }], true);
-    const snowLine = 78;
+    g.fillStyle(c.far);
+    fillBelow(farTop, H1);
+    const snowLine = style === 'snow' ? 110 : 78;
     const snow = farTop.map((p) => ({ x: p.x, y: Math.min(p.y, snowLine) }));
-    g.fillStyle(0x52688f).fillPoints([...snow, ...snow.map((p) => ({ x: p.x, y: snowLine })).reverse()], true);
-    make('mountainsFar', W, H1);
+    g.fillStyle(c.cap).fillPoints([...snow, ...snow.map((p) => ({ x: p.x, y: snowLine })).reverse()], true);
+    make(`far_${id}`, W, H1);
 
-    // 中景丘陵：圓緩起伏
-    const H2 = 160;
-    const mid = ridge(78, [[24, 2, 0.7], [12, 5, 2.3], [6, 9, 1.0]]);
-    g.fillStyle(0x14213d).fillPoints([...outline(mid), { x: W, y: H2 }, { x: 0, y: H2 }], true);
-    make('hills', W, H2);
+    const mid = outline(ridge(78, [[24, 2, 0.7], [12, 5, 2.3], [6, 9, 1.0]]));
+    g.fillStyle(c.mid);
+    fillBelow(mid, H2);
+    if (style === 'snow') {
+      // 丘陵頂端覆雪
+      g.fillStyle(c.cap, 0.35).fillPoints([...mid, ...mid.map((p) => ({ x: p.x, y: p.y + 10 })).reverse()], true);
+    }
+    make(`mid_${id}`, W, H2);
 
-    // 近景樹林：松樹剪影，超出邊緣的樹在另一側補畫，接縫不會斷掉
-    const H3 = 100;
-    g.fillStyle(0x0b1120).fillRect(0, 72, W, H3 - 72);
+    g.fillStyle(c.near).fillRect(0, 72, W, H3 - 72);
     for (let i = 0; i < 30; i++) {
       const x = Phaser.Math.Between(0, W);
       const h = Phaser.Math.Between(26, 48);
       const w = Phaser.Math.Between(14, 22);
-      for (const ox of [x - W, x, x + W]) {
+      wrap(x, (ox) => {
+        g.fillStyle(c.near);
         g.fillTriangle(ox - w / 2, 76, ox, 76 - h, ox + w / 2, 76);
         g.fillTriangle(ox - w / 2.6, 76 - h * 0.35, ox, 76 - h * 1.05, ox + w / 2.6, 76 - h * 0.35);
-      }
+        if (style === 'snow') {
+          // 樹梢積雪
+          g.fillStyle(c.cap, 0.7).fillTriangle(ox - w / 6, 76 - h * 0.8, ox, 76 - h * 1.05, ox + w / 6, 76 - h * 0.8);
+        }
+      });
     }
-    make('treeline', W, H3);
+    make(`near_${id}`, W, H3);
   }
 }

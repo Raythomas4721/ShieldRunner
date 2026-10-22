@@ -16,6 +16,7 @@ const PRECACHE = [
   'src/main.js',
   'src/save.js',
   'src/ui.js',
+  'src/objects/Buddy.js',
   'src/objects/Cover.js',
   'src/objects/Enemy.js',
   'src/objects/Player.js',
